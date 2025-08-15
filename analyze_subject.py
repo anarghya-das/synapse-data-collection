@@ -49,25 +49,30 @@ def main():
         os.mkdir(out_dir)
 
     if cmd_args.group == 'c':
-        files = glob.glob(os.path.join(control_path,glob_pattern),recursive=True)
+        path = os.path.join(control_path, "CTRL" + str(cmd_args.index).zfill(2))
     else:
-        files = glob.glob(os.path.join(exp_path,glob_pattern),recursive=True)
-    sub_idx = int(cmd_args.index) - 1; # account for 1-indexing
+        path = os.path.join(exp_path, "EXP" + str(cmd_args.index).zfill(2))
+    xdf_file = glob.glob(os.path.join(path, glob_pattern), recursive=True)[0]
+    if not xdf_file:
+        raise FileNotFoundError(f"No XDF file found in {path} matching pattern {glob_pattern}")
 
     raw, events, mapping = read_data(
-        files[sub_idx], bandpass={'low': 2, 'high': 50}, flat_voltage=0.1)
+        xdf_file, bandpass={'low': 2, 'high': 50}, flat_voltage=0.1)
     montage = mne.channels.read_custom_montage(
         'ceegrid_coords.csv', coord_frame='head')
     raw.set_montage(montage)
     raw.interpolate_bads(reset_bads=True)
     event_type = 'ast'
 
-    epochs = {timing: {disp: mne.Epochs(
-        raw, events, event_id=mapping[event_type][timing][disp],
-        tmin=-0.5, tmax=4, preload=True)
-        for disp in DISPS}
-        for timing in TIMINGS}
+    epochs = {}
+    for timing in TIMINGS:
+        epochs[timing] = {}
+        for disp in DISPS:
+            epochs[timing][disp] = mne.Epochs(
+                raw, events, event_id=mapping[event_type][timing][disp],
+                tmin=-0.5, tmax=4, preload=True)
     
+    """
     ar = autoreject.AutoReject(n_interpolate=[1, 2, 3, 4], random_state=11,
                            n_jobs=1, verbose=True)
 
@@ -81,6 +86,7 @@ def main():
             if not cmd_args.no_ar_fit:
                 ar.fit(epochs[timing][disp])
             epochs_ar[timing][disp] = ar.transform(epochs[timing][disp])
+    """
 
     psd_power = {}
     psd_freqs = {}
@@ -104,11 +110,11 @@ def main():
             plot_power_spectrum(psd_normalized_power[disp], psd_freqs['prestim'][disp], already_mean=True)
             plt.savefig(os.path.join(out_dir, f"psd_{disp}.png"))
     
-    tfr_delta_freqs = np.logspace(*np.log10([1, 4]), num=8) # alpha band frequencies
-    tfr_theta_freqs = np.logspace(*np.log10([4, 8]), num=8) # alpha band frequencies
-    tfr_alpha_freqs = np.logspace(*np.log10([8, 13]), num=8) # alpha band frequencies
-    tfr_beta_freqs = np.logspace(*np.log10([13, 30]), num=8) # alpha band frequencies
-    tfr_gamma_freqs = np.logspace(*np.log10([30, 50]), num=8) # alpha band frequencies
+    tfr_delta_freqs = np.logspace(*np.log10([1, 4]), num=8)
+    tfr_theta_freqs = np.logspace(*np.log10([4, 8]), num=8)
+    tfr_alpha_freqs = np.logspace(*np.log10([8, 13]), num=8)
+    tfr_beta_freqs = np.logspace(*np.log10([13, 30]), num=8)
+    tfr_gamma_freqs = np.logspace(*np.log10([30, 50]), num=8)
 
     tfr_bands = {'delta': tfr_delta_freqs, 'theta': tfr_theta_freqs, 'alpha': tfr_alpha_freqs, 'beta': tfr_beta_freqs, 'gamma': tfr_gamma_freqs}
 

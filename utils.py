@@ -297,7 +297,7 @@ def plot_tf_difference(power1, power2):
     # Normalize each channel's power between 0 and 1
     for idx, ch in enumerate(channels):
         diff = power1.data[idx] - power2.data[idx]
-        norm = TwoSlopeNorm(vmin=diff.min(), vcenter=0, vmax=diff.max())
+        norm = TwoSlopeNorm(vmin=min(-0.01, diff.min()), vcenter=0, vmax=max(0.01, diff.max()))
         im = axes[idx].imshow(
             diff,
             aspect='auto',
