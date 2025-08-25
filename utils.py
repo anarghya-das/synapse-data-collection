@@ -1,3 +1,5 @@
+import seaborn as sns
+from scipy import signal, stats
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 import glob
@@ -148,15 +150,18 @@ def create_mne(
     ]
     sampling_rate = float(eeg_stream["info"]["nominal_srate"][0])
     if sampling_rate != 125:
-        raise ValueError(f"Expected sampling rate of 125 Hz, got {sampling_rate} Hz")
+        raise ValueError(
+            f"Expected sampling rate of 125 Hz, got {sampling_rate} Hz")
     # Openbci EEG data is in microvolts, convert to volts for MNE
     eeg_data = eeg_stream["time_series"].T * 1e-6
-    info = mne.create_info(ch_names=ch_labels, sfreq=sampling_rate, ch_types="eeg")
+    info = mne.create_info(
+        ch_names=ch_labels, sfreq=sampling_rate, ch_types="eeg")
     raw = mne.io.RawArray(eeg_data, info)
 
     if flat_voltage != None:
         flat_voltage *= 1e-6  # Flat voltage threshold in Volts
-        _, bads = mne.preprocessing.annotate_amplitude(raw, flat=dict(eeg=flat_voltage))
+        _, bads = mne.preprocessing.annotate_amplitude(
+            raw, flat=dict(eeg=flat_voltage))
         raw.info["bads"] = bads
         print(f"Bad channels: {bads}")
 
@@ -192,7 +197,8 @@ def parse_xdf(file_path, eeg_stream_name="obci_eeg1"):
     marker_timestamps = marker_stream["time_stamps"]
     marker_data = np.array(marker_stream["time_series"]).squeeze()
     eeg_timestamps = eeg_stream["time_stamps"]
-    eeg_insert_points = closest_points_vector(eeg_timestamps, marker_timestamps)
+    eeg_insert_points = closest_points_vector(
+        eeg_timestamps, marker_timestamps)
     return marker_data, eeg_stream, eeg_insert_points
 
 
@@ -211,7 +217,8 @@ def get_event_names(files, prefix="ast_stim", exclude_participants=[]):
             continue
         participant_id = file.split(os.sep)[-1].split("_")[0]
         marker_data, _, _ = parse_xdf(file)
-        names = {str(f) for f in np.unique(marker_data) if str(f).startswith(prefix)}
+        names = {str(f) for f in np.unique(marker_data)
+                 if str(f).startswith(prefix)}
         name_mapping[f"{participant_number}_{participant_id}"] = names
         all_names.append(names)
     # Intersection: names present for every participant
@@ -229,17 +236,625 @@ def read_data(
     bandpass={"low": 1, "high": 50},
     flat_voltage=0.1,
 ):
-    marker_data, eeg_stream, eeg_insert_points = parse_xdf(file_path, eeg_stream_name)
+    marker_data, eeg_stream, eeg_insert_points = parse_xdf(
+        file_path, eeg_stream_name)
     # Create MNE events from the marker data
     if bindings is None:
         bindings = ["pmt", "hlt", "let", "ast"]
-    marker_dict, id_binding, category_mapping = create_mappings(marker_data, bindings)
+    marker_dict, id_binding, category_mapping = create_mappings(
+        marker_data, bindings)
     events = create_events(eeg_insert_points, marker_dict, marker_data)
     raw = create_mne(
         eeg_stream, events, id_binding, bandpass=bandpass, flat_voltage=flat_voltage
     )
     return raw, events, category_mapping
     # return eeg_stream, events, id_binding, category_mapping
+
+
+class EEGSignalQuality:
+    """
+    Comprehensive signal quality assessment for around-the-ear EEG devices.
+    Designed for academic research with MNE Python raw objects.
+    """
+
+    def __init__(self, raw, ear_channels, reference_channels=None):
+        """
+        Initialize signal quality analyzer.
+
+        Parameters:
+        -----------
+        raw : mne.io.Raw
+            MNE raw object containing EEG data
+        ear_channels : list
+            List of ear-EEG channel names (e.g., ['ear_left', 'ear_right'])
+        reference_channels : list, optional
+            List of reference scalp channel names for comparison
+        """
+        self.raw = raw.copy()
+        self.ear_channels = ear_channels
+        self.reference_channels = reference_channels or []
+        self.sfreq = raw.info["sfreq"]
+        self.results = {}
+
+    def calculate_rms(self, channels=None, window_size=1.0):
+        """
+        Calculate Root Mean Square (RMS) for signal amplitude assessment.
+
+        Parameters:
+        -----------
+        channels : list, optional
+            Channels to analyze (default: ear_channels)
+        window_size : float
+            Window size in seconds for RMS calculation
+
+        Returns:
+        --------
+        dict : RMS values and statistics
+        """
+        if channels is None:
+            channels = self.ear_channels
+
+        data, times = self.raw[channels, :]
+        window_samples = int(window_size * self.sfreq)
+
+        rms_results = {}
+        for i, ch in enumerate(channels):
+            ch_data = data[i, :]
+            # Calculate windowed RMS
+            rms_windows = []
+            for start in range(0, len(ch_data) - window_samples, window_samples):
+                window_data = ch_data[start: start + window_samples]
+                rms_val = np.sqrt(np.mean(window_data**2))
+                rms_windows.append(rms_val)
+
+            rms_results[ch] = {
+                "mean_rms": np.mean(rms_windows),
+                "std_rms": np.std(rms_windows),
+                "rms_windows": rms_windows,
+                "stability_score": 1
+                / (1 + np.std(rms_windows)),  # Higher = more stable
+            }
+
+        return rms_results
+
+    def calculate_snr_alpha(self, channels=None, eyes_closed_segments=None):
+        """
+        Calculate Signal-to-Noise Ratio using alpha peak detection.
+
+        Parameters:
+        -----------
+        channels : list, optional
+            Channels to analyze
+        eyes_closed_segments : list of tuples, optional
+            [(start_time, end_time), ...] for eyes-closed segments
+
+        Returns:
+        --------
+        dict : SNR values and alpha power metrics
+        """
+        if channels is None:
+            channels = self.ear_channels
+
+        # Apply minimal preprocessing for spectral analysis
+        raw_filtered = self.raw.copy().filter(l_freq=0.5, h_freq=None)
+        raw_filtered.notch_filter(freqs=[50, 60])  # Remove line noise
+
+        snr_results = {}
+
+        for ch in channels:
+            data, times = raw_filtered[ch, :]
+            data = data.flatten()
+
+            # Calculate power spectral density
+            freqs, psd = signal.welch(
+                data, fs=self.sfreq, nperseg=int(4 * self.sfreq))
+
+            # Define frequency bands
+            alpha_band = (8, 13)
+            # Delta and beta as noise reference
+            noise_bands = [(1, 4), (15, 25)]
+
+            # Find alpha peak
+            alpha_mask = (freqs >= alpha_band[0]) & (freqs <= alpha_band[1])
+            alpha_power = np.mean(psd[alpha_mask])
+            alpha_peak_freq = freqs[alpha_mask][np.argmax(psd[alpha_mask])]
+
+            # Calculate noise power
+            noise_power = 0
+            for noise_band in noise_bands:
+                noise_mask = (freqs >= noise_band[0]) & (
+                    freqs <= noise_band[1])
+                noise_power += np.mean(psd[noise_mask])
+            noise_power /= len(noise_bands)
+
+            # SNR calculation
+            snr_db = 10 * np.log10(alpha_power / noise_power)
+
+            snr_results[ch] = {
+                "snr_db": snr_db,
+                "alpha_power": alpha_power,
+                "alpha_peak_freq": alpha_peak_freq,
+                "noise_power": noise_power,
+                "psd": psd,
+                "freqs": freqs,
+            }
+
+        return snr_results
+
+    def calculate_spectral_power(self, channels=None):
+        """
+        Calculate power spectral density across canonical EEG frequency bands.
+
+        Returns:
+        --------
+        dict : Power values for each frequency band
+        """
+        if channels is None:
+            channels = self.ear_channels
+
+        # Apply filtering for spectral analysis
+        raw_filtered = self.raw.copy().filter(l_freq=0.5, h_freq=40)
+        raw_filtered.notch_filter(freqs=[50, 60])
+
+        # Define frequency bands
+        bands = {
+            "delta": (0.5, 4),
+            "theta": (4, 8),
+            "alpha": (8, 13),
+            "beta": (13, 30),
+            "gamma": (30, 40),
+        }
+
+        spectral_results = {}
+
+        for ch in channels:
+            data, times = raw_filtered[ch, :]
+            data = data.flatten()
+
+            # Calculate PSD using multitaper method for better variance reduction
+            freqs, psd = signal.welch(
+                data, fs=self.sfreq, nperseg=int(4 * self.sfreq))
+
+            ch_bands = {}
+            total_power = np.sum(psd)
+
+            for band_name, (low, high) in bands.items():
+                band_mask = (freqs >= low) & (freqs <= high)
+                absolute_power = np.sum(psd[band_mask])
+                relative_power = absolute_power / total_power
+
+                ch_bands[band_name] = {
+                    "absolute_power": absolute_power,
+                    "relative_power": relative_power,
+                    "peak_freq": freqs[band_mask][np.argmax(psd[band_mask])],
+                }
+
+            spectral_results[ch] = ch_bands
+
+        return spectral_results
+
+    def calculate_cross_correlation(self, reference_channel=None):
+        """
+        Calculate cross-correlation between ear-EEG and reference channels.
+
+        Parameters:
+        -----------
+        reference_channel : str, optional
+            Reference channel name (e.g., scalp electrode)
+
+        Returns:
+        --------
+        dict : Correlation coefficients and lag information
+        """
+        if not reference_channel or reference_channel not in self.raw.ch_names:
+            print("Warning: No valid reference channel provided")
+            return {}
+
+        correlation_results = {}
+
+        # Use filtered data for correlation analysis
+        raw_filtered = self.raw.copy().filter(l_freq=1, h_freq=40)
+
+        ref_data, _ = raw_filtered[reference_channel, :]
+        ref_data = ref_data.flatten()
+
+        for ch in self.ear_channels:
+            ear_data, _ = raw_filtered[ch, :]
+            ear_data = ear_data.flatten()
+
+            # Pearson correlation
+            pearson_r, pearson_p = stats.pearsonr(ear_data, ref_data)
+
+            # Cross-correlation with lags
+            cross_corr = np.correlate(ear_data, ref_data, mode="full")
+            lags = signal.correlation_lags(
+                len(ear_data), len(ref_data), mode="full")
+            max_corr_idx = np.argmax(np.abs(cross_corr))
+            max_lag_samples = lags[max_corr_idx]
+            max_lag_ms = (max_lag_samples / self.sfreq) * 1000
+
+            correlation_results[ch] = {
+                "pearson_r": pearson_r,
+                "pearson_p": pearson_p,
+                "max_cross_corr": cross_corr[max_corr_idx],
+                "optimal_lag_ms": max_lag_ms,
+                "cross_corr": cross_corr,
+                "lags": lags,
+            }
+
+        return correlation_results
+
+    def calculate_coherence(self, reference_channel=None):
+        """
+        Calculate coherence between ear-EEG and reference channels.
+
+        Returns:
+        --------
+        dict : Coherence values across frequency bands
+        """
+        if not reference_channel or reference_channel not in self.raw.ch_names:
+            print("Warning: No valid reference channel provided")
+            return {}
+
+        coherence_results = {}
+        raw_filtered = self.raw.copy().filter(l_freq=1, h_freq=40)
+
+        ref_data, _ = raw_filtered[reference_channel, :]
+        ref_data = ref_data.flatten()
+
+        for ch in self.ear_channels:
+            ear_data, _ = raw_filtered[ch, :]
+            ear_data = ear_data.flatten()
+
+            # Calculate coherence
+            freqs, coherence = signal.coherence(
+                ear_data, ref_data, fs=self.sfreq, nperseg=int(4 * self.sfreq)
+            )
+
+            # Calculate coherence in frequency bands
+            bands = {
+                "delta": (0.5, 4),
+                "theta": (4, 8),
+                "alpha": (8, 13),
+                "beta": (13, 30),
+                "gamma": (30, 40),
+            }
+
+            band_coherence = {}
+            for band_name, (low, high) in bands.items():
+                band_mask = (freqs >= low) & (freqs <= high)
+                band_coherence[band_name] = np.mean(coherence[band_mask])
+
+            coherence_results[ch] = {
+                "band_coherence": band_coherence,
+                "mean_coherence": np.mean(coherence),
+                "max_coherence": np.max(coherence),
+                "coherence_spectrum": coherence,
+                "freqs": freqs,
+            }
+
+        return coherence_results
+
+    def detect_artifacts(self, channels=None, voltage_threshold=100e-6):
+        """
+        Detect artifacts using voltage threshold and gradient criteria.
+
+        Parameters:
+        -----------
+        channels : list, optional
+            Channels to analyze
+        voltage_threshold : float
+            Voltage threshold in volts (default: 100 µV)
+
+        Returns:
+        --------
+        dict : Artifact detection results
+        """
+        if channels is None:
+            channels = self.ear_channels
+
+        artifact_results = {}
+
+        for ch in channels:
+            data, times = self.raw[ch, :]
+            data = data.flatten()
+
+            # Voltage threshold artifacts
+            voltage_artifacts = np.abs(data) > voltage_threshold
+
+            # Gradient artifacts (rapid voltage changes)
+            gradient = np.gradient(data)
+            gradient_threshold = 5 * np.std(gradient)
+            gradient_artifacts = np.abs(gradient) > gradient_threshold
+
+            # Combined artifact mask
+            all_artifacts = voltage_artifacts | gradient_artifacts
+            artifact_proportion = np.sum(all_artifacts) / len(data)
+
+            # Artifact-free segments
+            clean_data = data[~all_artifacts]
+
+            artifact_results[ch] = {
+                "artifact_proportion": artifact_proportion,
+                "voltage_artifacts": np.sum(voltage_artifacts),
+                "gradient_artifacts": np.sum(gradient_artifacts),
+                "clean_data_length": len(clean_data),
+                "artifact_mask": all_artifacts,
+                "data_quality_score": 1 - artifact_proportion,
+            }
+
+        return artifact_results
+
+    def alpha_modulation_test(self, eyes_open_segments, eyes_closed_segments):
+        """
+        Test alpha rhythm modulation (eyes-open vs eyes-closed).
+
+        Parameters:
+        -----------
+        eyes_open_segments : list of tuples
+            [(start_time, end_time), ...] for eyes-open periods
+        eyes_closed_segments : list of tuples
+            [(start_time, end_time), ...] for eyes-closed periods
+
+        Returns:
+        --------
+        dict : Alpha modulation results
+        """
+        raw_filtered = self.raw.copy().filter(l_freq=1, h_freq=30)
+        raw_filtered.notch_filter(freqs=[50, 60])
+
+        modulation_results = {}
+
+        for ch in self.ear_channels:
+            # Extract alpha power for each condition
+            alpha_power_open = []
+            alpha_power_closed = []
+
+            # Eyes open segments
+            for start_time, end_time in eyes_open_segments:
+                start_sample = int(start_time * self.sfreq)
+                end_sample = int(end_time * self.sfreq)
+                segment_data = raw_filtered[ch,
+                                            start_sample:end_sample][0].flatten()
+
+                freqs, psd = signal.welch(segment_data, fs=self.sfreq)
+                alpha_mask = (freqs >= 8) & (freqs <= 13)
+                alpha_power_open.append(np.mean(psd[alpha_mask]))
+
+            # Eyes closed segments
+            for start_time, end_time in eyes_closed_segments:
+                start_sample = int(start_time * self.sfreq)
+                end_sample = int(end_time * self.sfreq)
+                segment_data = raw_filtered[ch,
+                                            start_sample:end_sample][0].flatten()
+
+                freqs, psd = signal.welch(segment_data, fs=self.sfreq)
+                alpha_mask = (freqs >= 8) & (freqs <= 13)
+                alpha_power_closed.append(np.mean(psd[alpha_mask]))
+
+            # Statistical comparison
+            alpha_power_open = np.array(alpha_power_open)
+            alpha_power_closed = np.array(alpha_power_closed)
+
+            stat, p_value = stats.wilcoxon(
+                alpha_power_open, alpha_power_closed, alternative="less"
+            )
+
+            modulation_ratio = np.mean(
+                alpha_power_closed) / np.mean(alpha_power_open)
+
+            modulation_results[ch] = {
+                "alpha_power_eyes_open": np.mean(alpha_power_open),
+                "alpha_power_eyes_closed": np.mean(alpha_power_closed),
+                "modulation_ratio": modulation_ratio,
+                "statistical_significance": p_value,
+                "modulation_detected": p_value < 0.05 and modulation_ratio > 1.2,
+            }
+
+        return modulation_results
+
+    def comprehensive_quality_assessment(self, reference_channel=None):
+        """
+        Run comprehensive signal quality assessment.
+
+        Returns:
+        --------
+        dict : Complete quality assessment results
+        """
+        print("Running comprehensive EEG signal quality assessment...")
+
+        results = {}
+
+        # 1. RMS Analysis
+        print("1. Calculating RMS...")
+        results["rms"] = self.calculate_rms()
+
+        # 2. SNR Analysis
+        print("2. Calculating SNR...")
+        results["snr"] = self.calculate_snr_alpha()
+
+        # 3. Spectral Power Analysis
+        print("3. Analyzing spectral power...")
+        results["spectral_power"] = self.calculate_spectral_power()
+
+        # 4. Cross-correlation (if reference available)
+        if reference_channel:
+            print("4. Calculating cross-correlation...")
+            results["correlation"] = self.calculate_cross_correlation(
+                reference_channel)
+
+            print("5. Calculating coherence...")
+            results["coherence"] = self.calculate_coherence(reference_channel)
+
+        # 6. Artifact Detection
+        print("6. Detecting artifacts...")
+        results["artifacts"] = self.detect_artifacts()
+
+        # 7. Overall Quality Score
+        results["quality_summary"] = self._calculate_overall_quality_score(
+            results)
+
+        print("Assessment complete!")
+        self.results = results
+        return results
+
+    def _calculate_overall_quality_score(self, results):
+        """Calculate overall quality score based on multiple metrics."""
+        quality_scores = []
+
+        for ch in self.ear_channels:
+            ch_scores = []
+
+            # RMS stability score
+            if "rms" in results:
+                ch_scores.append(results["rms"][ch]["stability_score"])
+
+            # SNR score (normalized)
+            if "snr" in results:
+                snr_db = results["snr"][ch]["snr_db"]
+                # -10 to 10 dB range
+                snr_score = min(1.0, max(0.0, (snr_db + 10) / 20))
+                ch_scores.append(snr_score)
+
+            # Artifact score
+            if "artifacts" in results:
+                ch_scores.append(results["artifacts"]
+                                 [ch]["data_quality_score"])
+
+            # Correlation score (if available)
+            if "correlation" in results and ch in results["correlation"]:
+                corr_score = abs(results["correlation"][ch]["pearson_r"])
+                ch_scores.append(corr_score)
+
+            overall_score = np.mean(ch_scores) if ch_scores else 0.0
+            quality_scores.append(
+                {
+                    "channel": ch,
+                    "overall_score": overall_score,
+                    "quality_grade": self._grade_quality(overall_score),
+                }
+            )
+
+        return quality_scores
+
+    # ----------------- Visualization methods -----------------
+    def plot_quality_summary(
+        self, results=None, figsize=(10, 4), palette=None, show=True
+    ):
+        """Plot overall quality scores as a bar chart.
+
+        Expects results['quality_summary'] to be a list of dicts with keys
+        'channel' and 'overall_score'. If results is None, uses self.results.
+        """
+        if results is None:
+            results = getattr(self, "results", None)
+        if not results or "quality_summary" not in results:
+            raise ValueError(
+                "No quality_summary available in results. Run comprehensive_quality_assessment first or pass results."
+            )
+
+        qs = results["quality_summary"]
+        channels = [q["channel"] for q in qs]
+        scores = [q["overall_score"] for q in qs]
+        grades = [q.get("quality_grade", "") for q in qs]
+
+        plt.figure(figsize=figsize)
+        if palette is None:
+            palette = sns.color_palette("viridis", len(scores))
+        sns.barplot(x=scores, y=channels, palette=palette)
+        plt.xlabel("Overall Quality Score")
+        plt.ylabel("Channel")
+        plt.title("EEG Channel Quality Summary")
+        for i, (s, g) in enumerate(zip(scores, grades)):
+            plt.text(s + 0.01, i, f"{g} ({s:.2f})", va="center")
+        plt.xlim(0, 1)
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+    def plot_rms_stability(
+        self, results=None, channels=None, figsize=(12, 4), show=True
+    ):
+        """Plot RMS windows for channels or boxplot of stability."""
+        if results is None:
+            results = getattr(self, "results", None)
+        if not results or "rms" not in results:
+            raise ValueError(
+                "No rms results available. Run comprehensive_quality_assessment first or pass results."
+            )
+
+        rms = results["rms"]
+        if channels is None:
+            channels = list(rms.keys())
+
+        plt.figure(figsize=figsize)
+        # plot each channel's rms windows as a line
+        for ch in channels:
+            windows = rms[ch]["rms_windows"]
+            plt.plot(windows, label=ch)
+        plt.xlabel("Window #")
+        plt.ylabel("RMS (V)")
+        plt.title("RMS windows by channel")
+        plt.legend(loc="upper right", bbox_to_anchor=(1.15, 1))
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+    def plot_snr(self, results=None, figsize=(10, 4), show=True):
+        """Plot SNR (dB) per channel as a horizontal bar chart."""
+        if results is None:
+            results = getattr(self, "results", None)
+        if not results or "snr" not in results:
+            raise ValueError(
+                "No snr results available. Run comprehensive_quality_assessment first or pass results."
+            )
+
+        snr = results["snr"]
+        channels = list(snr.keys())
+        snr_db = [snr[ch]["snr_db"] for ch in channels]
+
+        plt.figure(figsize=figsize)
+        sns.barplot(x=snr_db, y=channels, palette="magma")
+        plt.xlabel("SNR (dB)")
+        plt.title("SNR per channel")
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+    def plot_artifact_proportions(self, results=None, figsize=(10, 4), show=True):
+        """Plot artifact proportion or data quality score per channel."""
+        if results is None:
+            results = getattr(self, "results", None)
+        if not results or "artifacts" not in results:
+            raise ValueError(
+                "No artifacts results available. Run comprehensive_quality_assessment first or pass results."
+            )
+
+        art = results["artifacts"]
+        channels = list(art.keys())
+        proportions = [art[ch]["artifact_proportion"] for ch in channels]
+
+        plt.figure(figsize=figsize)
+        sns.barplot(x=proportions, y=channels, palette="rocket")
+        plt.xlabel("Artifact Proportion")
+        plt.title("Artifact proportion by channel (higher = worse)")
+        plt.xlim(0, 1)
+        if show:
+            plt.tight_layout()
+            plt.show()
+
+    def _grade_quality(self, score):
+        """Convert quality score to letter grade."""
+        if score >= 0.8:
+            return "A - Excellent"
+        elif score >= 0.6:
+            return "B - Good"
+        elif score >= 0.4:
+            return "C - Fair"
+        elif score >= 0.2:
+            return "D - Poor"
+        else:
+            return "F - Unacceptable"
 
 
 def calculate_power_spectrum(epoch, method="multitaper", fmin=1, fmax=20, mean=False):
@@ -331,7 +946,8 @@ def plot_tf_analysis(power):
             data_norm,
             aspect="auto",
             origin="lower",
-            extent=[power.times[0], power.times[-1], power.freqs[0], power.freqs[-1]],
+            extent=[power.times[0], power.times[-1],
+                    power.freqs[0], power.freqs[-1]],
             vmin=0,
             vmax=1,
             cmap="Reds",
