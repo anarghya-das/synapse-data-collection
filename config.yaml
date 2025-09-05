@@ -24,7 +24,7 @@ hearing:
   pmt_stim: *stim_value
   pmt_poststim: *poststim_value
   pmt_trials: 5
-  hlt_prestim : *prestim_value
+  hlt_prestim : 7
   hlt_stim: *stim_value
   hlt_poststim: *poststim_value
   hlt_trials: 5
