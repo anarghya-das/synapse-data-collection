@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2024.2.4),
-    on February 13, 2025, at 15:31
+    on July 22, 2025, at 12:59
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -53,6 +53,7 @@ import random
 import time
 import atexit
 import pandas as pd
+import re
 
 started_recording = False
 original_quit = core.quit
@@ -120,15 +121,24 @@ def custom_quit():
     cleanup()  # Your cleanup function
     save_responses()
     original_quit()
+    
+# Function to extract the numeric part from the filename
+def extract_number(filename):
+    match = re.search(r'(\d+)', filename)
+    return int(match.group(1)) if match else float('inf')
 
 def get_audio_files(folder):
-    return [os.path.join(folder, file) for file in os.listdir(folder) if file.endswith('.wav') or file.endswith('.mp3')]
+    files = [os.path.join(folder, file) for file in os.listdir(folder) if file.endswith('.wav') or file.endswith('.mp3') or file.endswith('.ogg')]
+    return sorted(files,key=extract_number)
+
+def get_let_levels(let_folder):
+    return sorted([os.path.join(let_folder, f) for f in os.listdir(let_folder) if os.path.isdir(os.path.join(let_folder, f))], key=extract_number)
 
 class VideoRecorder:
     def __init__(self, cam_id=0, output_name='output', default_fps=30, display_video=False, enable_lsl=False):
         print("VideoRecorder start.")
         self.cam_id = cam_id
-        self.output_path = os.path.join(os.getcwd(),"exp_data",f"sub-{output_name}",f"{output_name}.avi")
+        self.output_path = os.path.join(os.getcwd(),"exp_data","videos",f"{output_name}.avi")
         self.display_video = display_video
         self.enable_lsl = enable_lsl
         self.cap = None
@@ -292,7 +302,7 @@ expInfo = {
     'run': '1',
     'config': 'hearing',
     'enable_video': 'true',
-    'enable_ppg': 'true',
+    'enable_ppg': 'false',
     'date|hid': data.getDateStr(),
     'expName|hid': expName,
     'psychopyVersion|hid': psychopyVersion,
@@ -308,7 +318,7 @@ or run the experiment with `--pilot` as an argument. To change what pilot
 PILOTING = core.setPilotModeFromArgs()
 # start off with values from experiment settings
 _fullScr = True
-_winSize = [1920, 1080]
+_winSize = [1512, 982]
 # if in pilot mode, apply overrides according to preferences
 if PILOTING:
     # force windowed mode
@@ -633,6 +643,8 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     enable_video = expInfo['enable_video'] == 'true'
     enable_ppg = expInfo['enable_ppg'] == 'true'
     exp_config = yaml_config[config_type]
+    seed_id = int(expInfo['participant'])
+    random.seed(seed_id)
     
     stim_root = os.path.join(os.getcwd(),"stimuli") 
     # Pupil Muscular Test (PMT) variables
@@ -656,8 +668,14 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     let_poststim_duration = exp_config['let_poststim']
     let_repeats = exp_config['let_trials']
     let_folder = os.path.join(stim_root,"let")
-    let_stims = get_audio_files(let_folder)
-    let_stims = let_stims * let_repeats
+    let_levels = get_let_levels(let_folder)
+    num_levels = len(let_levels)
+    let_loop = num_levels * let_repeats
+    let_stims = []
+    for i in range(let_loop):
+        level = let_levels[i % num_levels]
+        stim = random.choice(os.listdir(level))
+        let_stims.append(os.path.join(level, stim))
     let_trials = len(let_stims)
     let_idx = 0 
     #Aversion Sound Test (AST) variables
@@ -765,7 +783,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "hlt_welcome" ---
     text = visual.TextStim(win=win, name='text',
-        text="In Experiment 2, \n\nWe will play a pure-tone sound, gradually increasing the loudness.\n\nFor each loudness level, please rate it as follows:\n\n0: Can't hear\n1: Clearly audible\n2: Too loud\n\nUse the left mouse button to select your rating.",
+        text="In Experiment 2, \n\nWe will play a pure-tone sound, gradually increasing the loudness.\n\nFor each loudness level, please rate it as follows:\n\n0: Can't hear\n1: Clearly audible\n2: Too loud\n\nUse the left mouse button to select your rating. When you are ready, click the left mouse button to start.",
         font='Open Sans',
         pos=(0, 0), draggable=False, height=0.05, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
@@ -842,7 +860,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "let_welcome" ---
     text_6 = visual.TextStim(win=win, name='text_6',
-        text='In Experiment 3, \n\nA voice will speak random numbers from 0 to 20.\n\nEach time you hear a number, click the left mouse button to select the corresponding number on the screen.',
+        text='In Experiment 3, \n\nA voice will speak random numbers from 0 to 20.\n\nEach time you hear a number, click the left mouse button to select the corresponding number on the screen. \n\nWhen you are ready, click the left mouse button to start',
         font='Open Sans',
         pos=(0, 0), draggable=False, height=0.05, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
@@ -933,7 +951,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "ast_welcome" ---
     text_7 = visual.TextStim(win=win, name='text_7',
-        text='In Experiment 4, \n\nWe will play some ambient scene sounds. No response is required from you.',
+        text='In Experiment 4, \n\nWe will play some ambient scene sounds. No response is required from you. \n\nWhen you are ready, click the left mouse button to start',
         font='Open Sans',
         pos=(0, 0), draggable=False, height=0.05, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
@@ -994,12 +1012,15 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     
     # --- Initialize components for Routine "end_2" ---
     text_end = visual.TextStim(win=win, name='text_end',
-        text='The experiment has ended, thank you for participating!\n\nClick the left mouse button to exit.',
+        text='The experiment has ended, thank you for participating!\n\nClick the left mouse button to exit and notify the research staff.',
         font='Open Sans',
         pos=(0, 0), draggable=False, height=0.05, wrapWidth=None, ori=0.0, 
         color='white', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
         depth=-1.0);
+    mouse_5 = event.Mouse(win=win)
+    x, y = [None, None]
+    mouse_5.mouseClock = core.Clock()
     
     # create some handy timers
     
@@ -3446,7 +3467,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         # Run 'Begin Routine' code from code_3
         sound_path = ast_stims[ast_idx]
         name = os.path.basename(sound_path).split('.')[0]
-        marker_outlet.push_sample([f"ast_prestim-name"])
+        marker_outlet.push_sample([f"ast_prestim-{name}"])
         # store start times for ast_prestim
         ast_prestim.tStartRefresh = win.getFutureFlipTime(clock=globalClock)
         ast_prestim.tStart = globalClock.getTime(format='float')
@@ -3895,17 +3916,26 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     # create an object to store info about Routine end_2
     end_2 = data.Routine(
         name='end_2',
-        components=[text_end],
+        components=[text_end, mouse_5],
     )
     end_2.status = NOT_STARTED
     continueRoutine = True
     # update component parameters for each repeat
     # Run 'Begin Routine' code from code_14
+    global end_exp
     if not end_exp:
         marker_outlet.push_sample(["end"])
         core.wait(1)
         lsl_socket.sendall(b"stop\n")
         end_exp = True
+    # setup some python lists for storing info about the mouse_5
+    mouse_5.x = []
+    mouse_5.y = []
+    mouse_5.leftButton = []
+    mouse_5.midButton = []
+    mouse_5.rightButton = []
+    mouse_5.time = []
+    gotValidClick = False  # until a click is received
     # store start times for end_2
     end_2.tStartRefresh = win.getFutureFlipTime(clock=globalClock)
     end_2.tStart = globalClock.getTime(format='float')
@@ -3953,6 +3983,35 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         if text_end.status == STARTED:
             # update params
             pass
+        # *mouse_5* updates
+        
+        # if mouse_5 is starting this frame...
+        if mouse_5.status == NOT_STARTED and t >= 0.0-frameTolerance:
+            # keep track of start time/frame for later
+            mouse_5.frameNStart = frameN  # exact frame index
+            mouse_5.tStart = t  # local t and not account for scr refresh
+            mouse_5.tStartRefresh = tThisFlipGlobal  # on global time
+            win.timeOnFlip(mouse_5, 'tStartRefresh')  # time at next scr refresh
+            # update status
+            mouse_5.status = STARTED
+            mouse_5.mouseClock.reset()
+            prevButtonState = mouse_5.getPressed()  # if button is down already this ISN'T a new click
+        if mouse_5.status == STARTED:  # only update if started and not finished!
+            buttons = mouse_5.getPressed()
+            if buttons != prevButtonState:  # button state changed?
+                prevButtonState = buttons
+                if sum(buttons) > 0:  # state changed to a new click
+                    pass
+                    x, y = mouse_5.getPos()
+                    mouse_5.x.append(x)
+                    mouse_5.y.append(y)
+                    buttons = mouse_5.getPressed()
+                    mouse_5.leftButton.append(buttons[0])
+                    mouse_5.midButton.append(buttons[1])
+                    mouse_5.rightButton.append(buttons[2])
+                    mouse_5.time.append(mouse_5.mouseClock.getTime())
+                    
+                    continueRoutine = False  # end routine on response
         
         # check for quit (typically the Esc key)
         if defaultKeyboard.getKeys(keyList=["escape"]):
@@ -3993,6 +4052,13 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
     end_2.tStop = globalClock.getTime(format='float')
     end_2.tStopRefresh = tThisFlipGlobal
     thisExp.addData('end_2.stopped', end_2.tStop)
+    # store data for thisExp (ExperimentHandler)
+    thisExp.addData('mouse_5.x', mouse_5.x)
+    thisExp.addData('mouse_5.y', mouse_5.y)
+    thisExp.addData('mouse_5.leftButton', mouse_5.leftButton)
+    thisExp.addData('mouse_5.midButton', mouse_5.midButton)
+    thisExp.addData('mouse_5.rightButton', mouse_5.rightButton)
+    thisExp.addData('mouse_5.time', mouse_5.time)
     thisExp.nextEntry()
     # the Routine "end_2" was not non-slip safe, so reset the non-slip timer
     routineTimer.reset()
