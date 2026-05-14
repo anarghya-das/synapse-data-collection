@@ -71,7 +71,7 @@
     <Param val="1000" valType="num" updates="None" name="plPupilRemoteTimeoutMs"/>
     <Param val="False" valType="bool" updates="None" name="plPupillometryOnly"/>
     <Param val="psychopy_iohub_surface" valType="str" updates="None" name="plSurfaceName"/>
-    <Param val="0" valType="code" updates="None" name="runMode"/>
+    <Param val="1" valType="code" updates="None" name="runMode"/>
     <Param val="False" valType="bool" updates="None" name="rush"/>
     <Param val="time" valType="str" updates="None" name="sortColumns"/>
     <Param val="" valType="str" updates="None" name="tbLicenseFile"/>
@@ -1566,7 +1566,7 @@
         <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
         <Param val="1" valType="num" updates="constant" name="granularity"/>
         <Param val="" valType="code" updates="None" name="initVal"/>
-        <Param val="('Cannot hear', '', '', '', '', 'Clearly\nAudible', '', '', '', '', 'Extremely\nuncomfortable')" valType="list" updates="constant" name="labels"/>
+        <Param val="('Cannot hear', '', '', '', '', 'Clearly Audible', '', '', '', '', 'Extremely uncomfortable')" valType="list" updates="constant" name="labels"/>
         <Param val="0.03" valType="num" updates="constant" name="letterHeight"/>
         <Param val="slider_4" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
@@ -2072,7 +2072,7 @@
         <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
         <Param val="1" valType="num" updates="constant" name="granularity"/>
         <Param val="" valType="code" updates="None" name="initVal"/>
-        <Param val="('Pleasant', '', '', '', '', 'Neutral', '', '', '', '', 'Very\nUnpleasant')" valType="list" updates="constant" name="labels"/>
+        <Param val="('Pleasant', '', '', '', '', 'Neutral', '', '', '', '', 'Very Unpleasant')" valType="list" updates="constant" name="labels"/>
         <Param val="0.03" valType="num" updates="constant" name="letterHeight"/>
         <Param val="slider_ast" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
