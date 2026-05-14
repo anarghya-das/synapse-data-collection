@@ -1567,14 +1567,14 @@
         <Param val="1" valType="num" updates="constant" name="granularity"/>
         <Param val="" valType="code" updates="None" name="initVal"/>
         <Param val="('Cannot hear', '', '', '', '', 'Clearly Audible', '', '', '', '', 'Extremely uncomfortable')" valType="list" updates="constant" name="labels"/>
-        <Param val="0.03" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="0.02" valType="num" updates="constant" name="letterHeight"/>
         <Param val="slider_4" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
         <Param val="0" valType="num" updates="constant" name="ori"/>
         <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
         <Param val="False" valType="bool" updates="constant" name="readOnly"/>
         <Param val="False" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="(1.0, 0.1)" valType="list" updates="constant" name="size"/>
+        <Param val="(1.4, 0.1)" valType="list" updates="constant" name="size"/>
         <Param val="" valType="code" updates="None" name="startEstim"/>
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
         <Param val="0.0" valType="code" updates="None" name="startVal"/>
@@ -1639,7 +1639,7 @@
         <Param val="0" valType="num" updates="constant" name="granularity"/>
         <Param val="" valType="code" updates="None" name="initVal"/>
         <Param val="(&quot;Unclear&quot;, 1, 2, 3, 4, 5, 6)" valType="list" updates="constant" name="labels"/>
-        <Param val="0.05" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="0.03" valType="num" updates="constant" name="letterHeight"/>
         <Param val="slider_5" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
         <Param val="0" valType="num" updates="constant" name="ori"/>
@@ -2073,14 +2073,14 @@
         <Param val="1" valType="num" updates="constant" name="granularity"/>
         <Param val="" valType="code" updates="None" name="initVal"/>
         <Param val="('Pleasant', '', '', '', '', 'Neutral', '', '', '', '', 'Very Unpleasant')" valType="list" updates="constant" name="labels"/>
-        <Param val="0.03" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="0.02" valType="num" updates="constant" name="letterHeight"/>
         <Param val="slider_ast" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
         <Param val="0" valType="num" updates="constant" name="ori"/>
         <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
         <Param val="False" valType="bool" updates="constant" name="readOnly"/>
         <Param val="False" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="(1.0, 0.1)" valType="list" updates="constant" name="size"/>
+        <Param val="(1.4, 0.1)" valType="list" updates="constant" name="size"/>
         <Param val="" valType="code" updates="None" name="startEstim"/>
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
         <Param val="0.0" valType="code" updates="None" name="startVal"/>
