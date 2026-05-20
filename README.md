@@ -1,43 +1,136 @@
-# Hearing Study Data Collection Setup
+# Hearing Study Data Collection
 
-Experiment and configuration files for PsychoPy incorporating the Lab Streaming Layer (LSL) for data collection.
+PsychoPy experiment and configuration for collecting synchronized EEG, audio, and behavioral data during four auditory tasks. Uses Lab Streaming Layer (LSL) for time-aligned multi-modal recording.
 
-## Pre-Requisites 
-- Setup the Recording Environment by following [this guide](https://docs.google.com/document/d/1NA2v7Z6gLFAqDksrsyBf3V2RNZ6RxAdAVVEvcNDk-yA/edit?usp=sharing)
-- Read through the [data collection protocol](https://docs.google.com/document/d/1ouoUjMdvXaoEwp-7u0hbgPy1gG8JQRklimvL0BNJeHc/edit?usp=sharing) for this experiment
-- [Updated Setup](https://docs.google.com/document/d/1rhVqhTrDCe6JzxTdRydFx3ycqmDQtdOv-aFe-VhdEWo/edit?usp=sharing)
+## Pre-Requisites
 
-## Repository Structure
+- Set up the recording environment by following [this guide](https://docs.google.com/document/d/1NA2v7Z6gLFAqDksrsyBf3V2RNZ6RxAdAVVEvcNDk-yA/edit?usp=sharing)
+- Read through the [data collection protocol](https://docs.google.com/document/d/1ouoUjMdvXaoEwp-7u0hbgPy1gG8JQRklimvL0BNJeHc/edit?usp=sharing)
+- [Updated setup notes](https://docs.google.com/document/d/1rhVqhTrDCe6JzxTdRydFx3ycqmDQtdOv-aFe-VhdEWo/edit?usp=sharing)
 
-### Experiment Configurations
-- `config.yaml` file contains the various configurations for accommodating different modalities in the experiment and handling the timings for various routines in the experiment.
-- It currently supports three configurations: `eeg`, `fnirs`, `test`
-- Each of the configurations has the following attributes:
+## Tasks
+
+The session runs four tasks in this order: **PMT → HLT → LET → AST**. Each task has its own welcome screen, pre-stimulus fixation, stimulus, post-stimulus fixation, and (for HLT/LET/AST) a response screen.
+
+### PMT — Pupil Muscular Test
+Pupil response baseline. Screen color changes; no participant response required.
+
+### HLT — Hearing Loudness Test
+Pure-tone sounds at varying frequencies (500 Hz, 4000 Hz) and intensities (20–100 dB). After each tone, the participant rates loudness on a 0–10 scale.
+
+| Tick | Label |
+|------|-------|
+| 0 | Cannot hear |
+| 5 | Clearly audible |
+| 10 | Extremely uncomfortable |
+
+Stimuli live in `stimuli/hlt/` (e.g., `tone_60dB_4000Hz.wav`).
+
+### LET — Listening Effort Test
+Spoken words played at five SNR levels. The participant types or selects the word they heard.
+
+| Tick | Label |
+|------|-------|
+| -1 | Unclear (could not understand) |
+| 1–20 | The numbered word in the list (three sub-sliders cover ranges 1–6, 7–13, 14–20) |
+
+Stimuli are grouped by SNR level in `stimuli/let/{SNR0,SNR5,SNR10,SNR15,SNR20}/`. Each subfolder contains numbered `.wav` files matching the response options.
+
+### AST — Aversive Sound Test
+Naturalistic sounds rated for pleasantness on a 0–10 scale. Each block of 5 trials contains a fixed **3 aversive + 2 neutral** ratio, shuffled within the block. Neutral sounds are filenames prefixed with `control-`; everything else is aversive.
+
+| Tick | Label |
+|------|-------|
+| 0 | Pleasant |
+| 5 | Neutral |
+| 10 | Very unpleasant |
+
+Stimuli live in `stimuli/ast/`. The pool must contain at least 3 aversive and 2 neutral files for a full block (otherwise blocks shrink to whatever's available).
+
+## Output
+
+The experiment writes two files per participant:
+
+- `data/<participant>/<participant>_hearing_<timestamp>.csv` — raw PsychoPy trial log (all variables, all routines)
+- `exp_data/sub-<participant>/sub-<participant>_responses.csv` — processed responses, one row per stimulus
+
+The processed CSV has the following columns:
+
+| Column | Description |
+|--------|-------------|
+| `Stim Type` | `HLT`, `LET`, or `AST` |
+| `Stim Name` | Filename without extension (e.g., `tone_60dB_500Hz`, `babycry`) |
+| `Stim Variant` | HLT → empty; LET → SNR level (`SNR0`–`SNR20`); AST → `aversive` or `neutral` |
+| `Repeat Number` | 1-indexed trial number within the task |
+| `User Value` | Integer rating. HLT/AST: 0–10. LET: -1 for "Unclear" else the word index. Empty if no response. |
+| `User Response Time (s)` | Time from response prompt to click, 3 decimals |
+
+In addition, LSL streams an `xdf` recording per task at `exp_data/sub-<participant>/sub-<participant>_task-<task>_run-<run>.xdf`, with the marker stream `HearingMarkerStream` carrying event labels of the form `<task>_<phase>-<stim_name>` (e.g., `hlt_prestim-tone_60dB_500Hz`, `ast_response-babycry`).
+
+## Configuration
+
+`config.yaml` defines named experimental profiles. Two are bundled:
+
+- `hearing` — production timings (5 s pre/post, 2 s stim, 5 trials/blocks per task)
+- `test` — quick smoke test with 1 s timings and 1 block per task
+
+Each profile defines per-task durations and trial counts:
 
 ```yaml
-  sound_files: ["babycry", "chewing" ... ] # List of sound file names to include from the sounds folder
-  baseline_duration: 15 # Duration of the baseline routine (in seconds)
-  stimuli_repeat: 5 # Number of times each sound stimulus will repeat
-  stimulus_dration: 4 # Duration of the stimulus routine (in seconds)
-  response_duration: 5 # Duration of the response routine following the stimulus (in seconds)
-  rest_range: [6, 8] # Duration range of the rest routine following the response (in seconds)
+hearing:
+  prestim: &prestim_value 5         # seconds
+  stim: &stim_value 2
+  poststim: &poststim_value 5
+  pmt_prestim: *prestim_value
+  pmt_stim: *stim_value
+  pmt_poststim: *poststim_value
+  pmt_trials: 5                     # PMT/HLT/LET: total trials; AST: number of 5-stim blocks
+  hlt_prestim: 7
+  hlt_stim: *stim_value
+  hlt_poststim: *poststim_value
+  hlt_trials: 5
+  let_prestim: *prestim_value
+  let_stim: *stim_value
+  let_poststim: *poststim_value
+  let_trials: 5
+  ast_prestim: *prestim_value
+  ast_stim: 5
+  ast_poststim: *poststim_value
+  ast_trials: 5                     # 5 blocks × 5 stim = 25 AST trials (15 aversive, 10 neutral)
 ```
-- Check the `config.yaml` file for the actual values for each configuration
-  
-### PsychoPy Configuration
-- Experiment files:
-  - `hearing.pyexp`: Experiment file for the fNIRS/EEG modality experiments
-  - `pupil.pyexp`: Experiment file for pupil dilation and fNIRS/EEG modality experiments
-- Before running the PsychoPy experiment, it expects a few inputs:
-  - `participant`: A unique ID (number) for the participant. By default, it generates a random number which can be changed.
-  - `run`: Run number for the same participant for the same experiment if multiple recordings are needed (usually 1)
-  - `config`: The name of the experimental configuration value defined above.
 
+## Running the Experiment
+
+1. Start LabRecorder and ensure it's listening on `localhost:22345` (required — the experiment opens a TCP socket to LabRecorder at start).
+2. Open `hearing.psyexp` in PsychoPy Builder (or run `python hearing.py`).
+3. In the startup dialog, set:
+   - `participant` — unique numeric ID (auto-generated by default)
+   - `run` — run number (usually `1`)
+   - `config` — `hearing` or `test`
+   - `enable_video` — `true` to record webcam alongside (writes to `exp_data/videos/`)
+   - `enable_ppg` — `true` to read PPG over serial (default `false`)
+
+## Repository Layout
+
+```
+hearing.psyexp / hearing.py   PsychoPy experiment (Builder source + compiled output)
+passive.psyexp / passive.py   Alternate passive-task variant
+config.yaml                   Experiment timings and trial counts
+utils.py                      Shared analysis utilities (XDF loading, EEG quality, plotting)
+stimuli/{hlt,let,ast}/        Stimulus audio files actually read at runtime
+sounds/                       Raw source library (not read by the experiment directly)
+notebooks/                    Analysis notebooks (processing, quality, neurable, montage)
+montage/                      cEEGrid electrode coordinates and montage builder
+exp_data/                     XDF recordings and processed response CSVs
+data/                         Raw PsychoPy trial logs (gitignored)
+bids_dataset/                 BIDS-formatted EEG exports
+usb-camera/                   Standalone video + PPG recording scripts
+```
 
 <details>
-  <summary>Raspberry Pi Related Setup</summary>
+<summary>Raspberry Pi Related Setup (legacy)</summary>
 
-### FFMPEG 
+### FFMPEG
 
 - Make sure [FFMPEG](https://ffmpeg.org/) is installed on both Raspberry Pi and the recording computer
 
@@ -45,11 +138,11 @@ Experiment and configuration files for PsychoPy incorporating the Lab Streaming 
 
 - Install [GStreamer](https://gstreamer.freedesktop.org/download/) to stream video from Raspberry Pi to the recording computer
 - For Windows, make sure to select complete installation (not typical) when installing
-  
+
 > Useful Commands
-> - Streaming from Pi (update with hostname or ip-address of the computer): 
+> - Streaming from Pi (update with hostname or ip-address of the computer):
 > ``` python stream.py ```
-> - Capturing from the computer (Replace <port_num> with actual port number): 
+> - Capturing from the computer (Replace <port_num> with actual port number):
 > ``` gst-launch-1.0 -v udpsrc port=<port_num> caps="application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264" ! rtpjitterbuffer ! rtph264depay ! avdec_h264 ! videoconvert ! fpsdisplaysink video-sink=autovideosink ```
 > - Converting .h264 to .mp4:
 > ``` ffmpeg -i <input_file>.h264 -c copy <output_file>.mp4 ```
@@ -57,25 +150,18 @@ Experiment and configuration files for PsychoPy incorporating the Lab Streaming 
 > ``` ffmpeg -i <input_file>.mjpeg -pix_fmt yuv420p -c:v libx264 -crf 20 -an <output_file>.mp4 ```
 > - Splitting a video file by times:
 > ``` ffmpeg -i <input_file>.h264 -ss <start_time> -to <end_time> -c:v libx264 -preset fast -crf 18 ```
->> - `-crf` flag ensures the quality (0-51, 0 - lossless, 23 - default, 51 - worst) 
+> > - `-crf` flag ensures the quality (0-51, 0 - lossless, 23 - default, 51 - worst)
 
-
-### Raspberry Pi 
+### Raspberry Pi
 
 - Create a virtual environment with `--system-site-packages` flag
 - Activate the virtual environment
-- Install [pylsl](https://github.com/chkothe/pylsl/tree/master)
-  - [Examples](https://github.com/chkothe/pylsl/tree/master/examples)
-- Install [picamera2](https://github.com/raspberrypi/picamera2)
-  - Follow the installation instructions under the `Installation using pip` section
-- Copy and run the `server-camera.py` script on the Raspberry Pi 
+- Install [pylsl](https://github.com/chkothe/pylsl/tree/master) ([Examples](https://github.com/chkothe/pylsl/tree/master/examples))
+- Install [picamera2](https://github.com/raspberrypi/picamera2) (follow the `Installation using pip` instructions)
+- Copy and run the `server-camera.py` script on the Raspberry Pi
 - After the experiment, the video will be saved to the `recordings` folder with the current date and time. Access this folder using a file manager and move the file to the `input` folder for further analysis.
 
-## Steps
-
-- Run the `pi-recorder.py` script on the raspberry pi
-
-## Data Processing 
+### Data Processing
 
 - Move the raw video (.mp4) from Raspberry Pi to the `input` folder
 - Move the experiment data file (ends with `.xdf`) to the `exp_data` folder
