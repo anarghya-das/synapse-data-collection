@@ -2016,7 +2016,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         # Run 'Begin Routine' code from code_7
         hlt_sound.setSound(sound_path, hamming=True)
         marker_outlet.push_sample([f"hlt_stim-{name}"])
-        sound_duration = current_sound.getDuration()
+        sound_duration = hlt_sound.getDuration()
         print(f'{name}: {sound_duration}')
         if hlt_idx < len(hlt_stims)-1:
             hlt_idx+=1
@@ -2792,7 +2792,7 @@ def run(expInfo, thisExp, win, globalClock=None, thisSession=None):
         # Run 'Begin Routine' code from code_11
         let_sound.setSound(sound_path, hamming=True)
         marker_outlet.push_sample([f"let_stim-{name}"])
-        sound_duration = current_sound.getDuration()
+        sound_duration = let_sound.getDuration()
         print(f'{name}: {sound_duration}')
         if let_idx < len(let_stims)-1:
             let_idx+=1

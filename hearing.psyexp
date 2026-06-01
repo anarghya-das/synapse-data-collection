@@ -708,7 +708,7 @@
         <Param val="" valType="extendedCode" updates="constant" name="Begin Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
-        <Param val="hlt_sound.setSound(sound_path, hamming=True)&amp;#10;marker_outlet.push_sample([f&quot;hlt_stim-{name}&quot;])&amp;#10;sound_duration = current_sound.getDuration()&amp;#10;print(f'{name}: {sound_duration}')&amp;#10;if hlt_idx &lt; len(hlt_stims)-1:&amp;#10;    hlt_idx+=1&amp;#10;else:&amp;#10;    hlt_idx = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="hlt_sound.setSound(sound_path, hamming=True)&amp;#10;marker_outlet.push_sample([f&quot;hlt_stim-{name}&quot;])&amp;#10;sound_duration = hlt_sound.getDuration()&amp;#10;print(f'{name}: {sound_duration}')&amp;#10;if hlt_idx &lt; len(hlt_stims)-1:&amp;#10;    hlt_idx+=1&amp;#10;else:&amp;#10;    hlt_idx = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
         <Param val="Py" valType="str" updates="None" name="Code Type"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each Frame"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each JS Frame"/>
@@ -1032,7 +1032,7 @@
         <Param val="" valType="extendedCode" updates="constant" name="Begin Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
-        <Param val="let_sound.setSound(sound_path, hamming=True)&amp;#10;marker_outlet.push_sample([f&quot;let_stim-{name}&quot;])&amp;#10;sound_duration = current_sound.getDuration()&amp;#10;print(f'{name}: {sound_duration}')&amp;#10;if let_idx &lt; len(let_stims)-1:&amp;#10;    let_idx+=1&amp;#10;else:&amp;#10;    let_idx = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="let_sound.setSound(sound_path, hamming=True)&amp;#10;marker_outlet.push_sample([f&quot;let_stim-{name}&quot;])&amp;#10;sound_duration = let_sound.getDuration()&amp;#10;print(f'{name}: {sound_duration}')&amp;#10;if let_idx &lt; len(let_stims)-1:&amp;#10;    let_idx+=1&amp;#10;else:&amp;#10;    let_idx = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
         <Param val="Py" valType="str" updates="None" name="Code Type"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each Frame"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each JS Frame"/>
