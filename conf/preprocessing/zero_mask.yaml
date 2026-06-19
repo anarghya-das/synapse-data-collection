@@ -1,0 +1,7 @@
+# Variant: same as published, but bad channels are handled by 'zero_mask' instead
+# of being dropped. Lets models compare channel-handling strategies on a fixed cohort.
+defaults:
+  - published
+  - _self_
+name: zero_mask
+channel_strategy: zero_mask

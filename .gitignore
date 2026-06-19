@@ -1,0 +1,13 @@
+# Raw recordings — large, not version-controlled here
+data/
+
+# Generated build artifacts
+outputs/processed/*.pkl     # ~450 MB each; regenerate with pipelines/build_dataset.py
+outputs/runs/               # Hydra per-run logs/metadata
+# (outputs/quality/* — QC excel + reports + spotcheck are kept, they're small & useful)
+
+# Python / OS
+__pycache__/
+*.pyc
+.DS_Store
+*.log

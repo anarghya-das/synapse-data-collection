@@ -1,0 +1,43 @@
+# The corrected usable cohort from the robust QC (README "Usable subjects"):
+# 24 EXP + 12 CTRL. Adds the subjects the legacy QC wrongly dropped
+# (CTRL09, CTRL12, EXP08, EXP10 rescued from the common-mode-drift artifact)
+# plus the later EXP batch that passed QC.
+name: usable
+exp:
+  - EXP01
+  - EXP02
+  - EXP03
+  - EXP04
+  - EXP05
+  - EXP06
+  - EXP07
+  - EXP08
+  - EXP10
+  - EXP11
+  - EXP13
+  - EXP15
+  - EXP16
+  - EXP18
+  - EXP20
+  - EXP21
+  - EXP22
+  - EXP23
+  - EXP25
+  - EXP28
+  - EXP29
+  - EXP31
+  - EXP45
+  - EXP46
+ctrl:
+  - CTRL01
+  - CTRL02
+  - CTRL06
+  - CTRL07
+  - CTRL08
+  - CTRL09
+  - CTRL10
+  - CTRL12
+  - CTRL17
+  - CTRL18
+  - CTRL20
+  - CTRL21

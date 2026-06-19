@@ -1,0 +1,8 @@
+# Quality-analysis dependencies (matches the `brain` conda env used by the
+# main analysis repo). Install into a fresh env with:  pip install -r requirements.txt
+mne>=1.10
+pyxdf>=1.16
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+openpyxl>=3.1

@@ -1,0 +1,33 @@
+# The exact cohort used in the published analysis (synapse_preprocessed.pkl:
+# exp_subjects / ctrl_subjects). Use this to reproduce / compare.
+name: published
+exp:
+  - EXP01
+  - EXP02
+  - EXP03
+  - EXP04
+  - EXP05
+  - EXP06
+  - EXP07
+  - EXP11
+  - EXP13
+  - EXP15
+  - EXP16
+  - EXP18
+  - EXP21
+  - EXP22
+  - EXP23
+  - EXP25
+  - EXP28
+  - EXP29
+ctrl:
+  - CTRL01
+  - CTRL02
+  - CTRL06
+  - CTRL07
+  - CTRL08
+  - CTRL10
+  - CTRL17
+  - CTRL18
+  - CTRL20
+  - CTRL21

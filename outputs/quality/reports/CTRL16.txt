@@ -1,0 +1,46 @@
+============================================================
+CEEGrid EEG Quality Report
+============================================================
+
+Overall Quality Score: 0.0/100
+Preset Used: default
+
+Time Window Analyzed:
+  - Start: 0.0s
+  - End: 1329.2s
+  - Duration: 1329.2s of 1329.2s total
+
+Bad Channels Summary:
+  - Total bad: 16/16
+  - Flat: ['L01', 'L02', 'L04', 'L05', 'L07', 'L08', 'L09', 'L10', 'R01', 'R02', 'R04', 'R05', 'R07', 'R08', 'R09', 'R10']
+  - Low variance (dead): ['L01', 'L02', 'L04', 'L05', 'L07', 'L08', 'L09', 'L10', 'R01', 'R02', 'R04', 'R05', 'R07', 'R08', 'R09', 'R10']
+  - Noisy (high-variance outlier): []
+  - Low correlation: []
+  - High correlation (possible bridging; not scored): ['L01', 'L02', 'L04', 'L05', 'L07', 'L08', 'L09', 'L10', 'R01', 'R02', 'R04', 'R05', 'R07', 'R08', 'R09', 'R10']
+
+Thresholds Used:
+  - Flat voltage: 0.50 uV
+  - Correlation bounds: (0.4, 0.999)
+  - Dead-channel SD floor: 0.3 uV (on 1.0 Hz high-passed copy)
+
+Per-Channel Metrics:
+  L01: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L02: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L04: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L05: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L07: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L08: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L09: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  L10: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R01: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R02: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R04: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R05: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R07: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R08: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R09: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+  R10: BAD | var=1.09e-34 | sd= 0.000uV | corr=1.000 | snr=0.0
+
+Ear Asymmetry Index: 0.000
+  (0 = symmetric, 1 = completely asymmetric)
+============================================================

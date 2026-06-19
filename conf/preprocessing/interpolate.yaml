@@ -1,0 +1,7 @@
+# Variant: explicit 'interpolate' strategy. Identical to the published mirror
+# (which also interpolates); provided as a clearly-named strategy variant.
+defaults:
+  - published
+  - _self_
+name: interpolate
+channel_strategy: interpolate

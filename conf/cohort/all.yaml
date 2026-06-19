@@ -1,0 +1,6 @@
+# Every participant with a resolvable recording. Subjects with no usable
+# OpenBCI EEG (no-EEG / empty / Neurable-only) are skipped at build time and
+# logged in the manifest. Empty lists => the builder auto-discovers all IDs.
+name: all
+exp: []
+ctrl: []
