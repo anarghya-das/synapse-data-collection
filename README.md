@@ -114,9 +114,10 @@ hearing:
 
 ```
 hearing.psyexp / hearing.py   PsychoPy experiment (Builder source + compiled output)
-passive.psyexp / passive.py   Alternate passive-task variant
 config.yaml                   Experiment timings and trial counts
 utils.py                      Shared analysis utilities (XDF loading, EEG quality, plotting)
+eeg_quality/                  Recording-time EEG safety net: pre-flight gate (imported
+                              by the experiment) + live watchdog + mock streamer
 stimuli/{hlt,let,ast}/        Stimulus audio files actually read at runtime
 sounds/                       Raw source library (not read by the experiment directly)
 notebooks/                    Analysis notebooks (processing, quality, neurable, montage)
@@ -126,6 +127,9 @@ data/                         Raw PsychoPy trial logs (gitignored)
 bids_dataset/                 BIDS-formatted EEG exports
 usb-camera/                   Standalone video + PPG recording scripts
 ```
+
+See `eeg_quality/README.md` for how the pre-flight gate and live watchdog work
+and how to run them.
 
 <details>
 <summary>Raspberry Pi Related Setup (legacy)</summary>

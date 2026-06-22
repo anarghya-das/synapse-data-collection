@@ -1,0 +1,14 @@
+# Dependencies for the EEG quality tooling that runs OUTSIDE PsychoPy:
+#   eeg_watchdog.py            - live quality/flow monitor (separate window)
+#   calibrate_quality.py       - offline scoring of recorded XDFs
+#   qc_core.py                 - the robust QC used by both
+#
+# Install these in a NORMAL Python env (e.g. your conda env), NOT the PsychoPy
+# app bundle. PsychoPy itself only needs requirements.txt (numpy + pylsl etc.).
+# Loose pins so it co-exists with an existing scientific stack (mne pulls a
+# compatible numpy/scipy/matplotlib if they are absent).
+numpy>=1.26
+scipy>=1.11
+mne>=1.7
+pyxdf>=1.16
+pylsl>=1.16
