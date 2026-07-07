@@ -3,6 +3,7 @@ data/
 
 # Generated build artifacts
 outputs/processed/*.pkl     # ~450 MB each; regenerate with pipelines/build_dataset.py
+outputs/paired/             # video clips + per-trial EEG epochs; regenerate with pipelines/pair_video.py
 outputs/runs/               # Hydra per-run logs/metadata
 # (outputs/quality/* — QC excel + reports + spotcheck are kept, they're small & useful)
 

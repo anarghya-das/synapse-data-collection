@@ -4,37 +4,6 @@ Raw data and quality analysis for the SYNAPSE CEEGrid ear-EEG hyperacusis study.
 The analysis/paper code lives separately in `../synapse`; this repo holds the
 participant recordings and the tooling that reads and quality-checks them.
 
-## Layout
-
-```
-data/                    # raw recordings (gitignored: large)
-  01_Control/CTRLnn/sub-XXXXXX/sub-XXXXXX_task-hearing_run-001.xdf  (+ responses.csv, .avi, audiogram PDFs)
-  02_Experimental/EXPnn/sub-XXXXXX/...
-
-synapse_qc/              # quality-analysis package
-  qc_core.py             # vendored CEEGrid QC routines (from ../synapse/preprocessing/utils.py)
-  inventory.py           # participant discovery + recording resolution (shared layout layer)
-  excel.py               # workbook writer
-  manual.py              # loader for the prior hand ratings (used only by the later comparison step)
-run_quality.py           # QC driver: QC every participant -> Excel + per-participant reports
-spotcheck.py             # plot/audit a participant's channels against the QC flags
-
-pipelines/               # dataset-builder package (cohort x preprocessing variants)
-  build_dataset.py       # build a processed-data variant; compare.py: diff vs the published pkl
-conf/                    # Hydra config groups: cohort/ (participant IDs), preprocessing/ (variants)
-assets/                  # ceegrid_montage_head.npz + global_event_id_map.pkl (canonical)
-
-outputs/                 # ALL generated artifacts
-  quality/               #   quality_results.xlsx (Summary/Per-Channel/Legend), reports/<PID>.txt,
-                         #   spotcheck/<PID>.png, QC_methodology_review.md
-  processed/             #   <variant>.pkl (gitignored, ~450 MB) + <variant>.manifest.json
-  runs/                  #   Hydra per-run logs (gitignored)
-```
-
-47 participants (29 EXP, 18 CTRL). The *published* study used a subset
-(18 EXP + 10 CTRL); this folder is the full raw collection, and the QC here is
-one input to deciding inclusion.
-
 ## Running the quality analysis
 
 ```bash
@@ -137,6 +106,37 @@ processing order, not sorted). Current result for the `published` mirror:
 So the rebuild is faithful; differences are small and fully explained (epoch-rejection
 sensitivity + minor QC drift). Note CTRL01/02/03 are resolved from their `-old` folders
 (renamed after the pkl was built; the published `exclude -old` discovery would now drop them).
+
+## Multimodal pairing (video + EEG)
+
+`pipelines/pair_video.py` pairs the webcam recording with the EEG for a multimodal
+model. It is the Hydra/inventory port of `../synapse/split_video.py` (the alignment
+library lives in `synapse_qc/av_align.py`). Files resolve through `inventory` (XDF +
+the per-participant `.avi`), and **the EEG parameters are the same `conf/preprocessing/`
+group `build_dataset` uses**, so the paired EEG stays in lock-step with the processed-pkl
+variants (stream, bandpass, notch, `channel_strategy`, quality, epoch rejection are all
+overridable).
+
+```bash
+python -m pipelines.pair_video                                   # usable cohort, published EEG, epoch mode
+python -m pipelines.pair_video preprocessing=drop                # swap bad-channel handling
+python -m pipelines.pair_video video.mode=marker                 # legacy marker-to-marker clips
+python -m pipelines.pair_video preprocessing.bandpass.low=2 preprocessing.notch_freq=-1   # notch<0 disables
+python -m pipelines.pair_video cohort=published video.no_video=true   # EEG epochs only
+```
+- **`epoch` mode** (default): one stim-locked clip + one EEG epoch per trial, both windowed
+  to `tasks.timings`. Video clips are matched **1:1 to the EEG epochs that survive z-score
+  rejection** (rejected trials are dropped from the video side too), with a per-frame
+  `*_frames.csv` sidecar (`t_rel_stim_s`, `t_lsl_s`) — the alignment key. Use
+  `av_align.resample_frames_to_eeg` / `nearest_frame_for_eeg` to map frames onto the 125 Hz
+  EEG grid; **never** use a nominal fps (the webcam rate is sub-nominal and dejittered).
+- **`marker` mode**: legacy marker-to-marker segments + a single filtered `Raw.fif`.
+- `conf/video/` — video-only options (`mode`, `sfreq`, `fps`, `exclude_phases`, `bindings`,
+  `no_eeg`/`no_video`). Output: `outputs/paired/<name>/sub-<PID>/{eeg,video}/` + per-subject
+  `*_alignment.csv` + a top-level `dataset_manifest.csv`. **Clips are large build artifacts**
+  (`outputs/paired/` is gitignored). A recording without `obci_eeg1` (e.g. Neurable-only) is
+  isolated as a per-subject FAILED row, not a crash. (Like `build_dataset`, an empty cohort
+  list means **all** discovered IDs for that group, not none.)
 
 ## Two EEG streams (important)
 
