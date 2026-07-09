@@ -343,24 +343,77 @@ def write_epoch_clips(input_file, segments, video_root, subject_id, fps_override
     return manifest
 
 
-def epoch_eeg(raw, events, marker_dict, task_timings, rejection, out_dir, subject_id):
-    """Epoch on stim markers per task, apply z-score PTP rejection, save survivors.
+def _write_qc_sidecar(qc_result, ch_names, out_dir, subject_id):
+    """Persist the QC verdict next to the epochs so the downstream finalize step
+    can apply a channel strategy without re-running QC.
 
-    Mirrors ``publication_analysis/preprocess.py`` exactly (stim-locked,
-    ``baseline=None``; per-epoch max-channel PTP rejected above
-    ``mean + z*SD``; task excluded when ``< min_epochs`` survive or
-    ``> max_reject_pct`` are rejected). Returns a per-task dict with the
-    chronological list of *kept trial positions* so the video side can drop the
-    identical rejected trials and stay paired 1:1 with what the model sees.
-    """
+    Writes a BIDS-style ``*_channels.tsv`` (channel / status / reasons) and a
+    ``*_qc.json`` (score, method, preset, per-criterion bad lists). This is the
+    source of truth for the per-channel validity mask: pairing detects the bad
+    channels but does NOT act on them, so this file is what tells the model which
+    channels are real vs interpolated/masked."""
+    import csv
+    import json
+
+    os.makedirs(out_dir, exist_ok=True)
+    reasons_by_crit = {
+        "flat": set(qc_result.get("bads_flat", [])),
+        "dead": set(qc_result.get("bads_variance", [])),
+        "noisy": set(qc_result.get("bads_noisy", [])),
+        "lowcorr": set(qc_result.get("bads_corr", [])),
+    }
+    bads = set(qc_result.get("bads_combined", []))
+
+    tsv_path = os.path.join(out_dir, f"sub-{subject_id}_channels.tsv")
+    with open(tsv_path, "w", newline="") as fh:
+        w = csv.writer(fh, delimiter="\t")
+        w.writerow(["channel", "status", "reasons"])
+        for ch in ch_names:
+            hit = ";".join(k for k, v in reasons_by_crit.items() if ch in v)
+            w.writerow([ch, "bad" if ch in bads else "good", hit or "n/a"])
+
+    json_path = os.path.join(out_dir, f"sub-{subject_id}_qc.json")
+    with open(json_path, "w") as fh:
+        json.dump(
+            {
+                "subject_id": subject_id,
+                "quality_score": qc_result.get("quality_score"),
+                "method": qc_result.get("method"),
+                "preset": qc_result.get("preset_used"),
+                "n_channels": len(ch_names),
+                "ch_names": list(ch_names),
+                "bads_combined": sorted(bads),
+                "bads_flat": sorted(reasons_by_crit["flat"]),
+                "bads_dead": sorted(reasons_by_crit["dead"]),
+                "bads_noisy": sorted(reasons_by_crit["noisy"]),
+                "bads_lowcorr": sorted(reasons_by_crit["lowcorr"]),
+                "bads_highcorr_reported": sorted(qc_result.get("bads_highcorr", [])),
+            },
+            fh,
+            indent=2,
+        )
+    return tsv_path, json_path
+
+
+def epoch_eeg_all(raw, events, marker_dict, task_timings, out_dir, subject_id):
+    """Epoch on stim markers per task and save EVERY boundary-valid epoch.
+
+    Detect-and-defer: no PTP rejection and no channel repair happen here. Bad
+    channels detected by QC stay in ``raw.info['bads']`` and are written into each
+    ``_epo.fif`` (MNE persists ``info['bads']``), so the downstream finalize step
+    can interpolate / mask / drop them and apply epoch rejection over *good*
+    channels. This keeps the slow alignment + video encoding a one-time cost and
+    makes channel strategy / rejection cheap, swappable downstream transforms.
+
+    MNE may still drop epochs whose ``[tmin, tmax]`` window falls outside the
+    recording; ``kept_positions`` therefore reflects the trials actually saved
+    (chronological trial index within the task), keeping the video side matched
+    1:1 with the saved epochs. ``excluded`` is always False here — task exclusion
+    is a rejection decision, and rejection lives in finalize."""
     import mne
 
     eeg_dir = os.path.join(out_dir, "eeg")
     os.makedirs(eeg_dir, exist_ok=True)
-    z = rejection.get("z_threshold", 3)
-    min_epochs = rejection.get("min_epochs", 5)
-    max_reject_pct = rejection.get("max_reject_pct", 50)
-    rej_enabled = rejection.get("enabled", True)
 
     info = {}
     for task, timings in task_timings.items():
@@ -372,7 +425,7 @@ def epoch_eeg(raw, events, marker_dict, task_timings, rejection, out_dir, subjec
         if not stim_ids:
             continue
         stim_codes = set(stim_ids.values())
-        # Chronological event-array rows for this task's stim markers. A kept
+        # Chronological event-array rows for this task's stim markers. A saved
         # epoch's position within this list is its trial index, shared with video.
         task_event_rows = [i for i, r in enumerate(events) if int(r[2]) in stim_codes]
 
@@ -381,49 +434,24 @@ def epoch_eeg(raw, events, marker_dict, task_timings, rejection, out_dir, subjec
             tmin=timings["tmin"], tmax=timings["tmax"],
             baseline=None, preload=True, reject_by_annotation=False, verbose=False,
         )
-        n_before = len(epochs)
-
-        if rej_enabled and n_before >= 3:
-            data = epochs.get_data(copy=True)            # (n_epochs, n_ch, n_times)
-            ptps = np.ptp(data, axis=2).max(axis=1)      # max PTP across channels
-            thresh = ptps.mean() + z * ptps.std()
-            bad = np.where(ptps > thresh)[0]
-            if len(bad):
-                epochs.drop(bad, reason="PTP_ZSCORE", verbose=False)
-        n_after = len(epochs)
-        n_rej = n_before - n_after
-        pct = (n_rej / n_before * 100) if n_before else 0.0
-
-        excluded, reason = False, ""
-        if rej_enabled and n_before >= 3:
-            if n_after < min_epochs:
-                excluded, reason = True, f"<{min_epochs} epochs survive"
-            elif pct > max_reject_pct:
-                excluded, reason = True, f">{max_reject_pct}% rejected"
-
+        n_trials = len(task_event_rows)
+        n_epochs = len(epochs)
         kept_positions = [task_event_rows.index(int(r)) for r in epochs.selection]
-        stats = {
-            "excluded": excluded,
-            "kept_positions": kept_positions,
-            "n_before": n_before,
-            "n_after": n_after,
-            "n_rejected": n_rej,
-            "pct_rejected": round(pct, 1),
-        }
-
-        if excluded:
-            print(f"  [eeg] {task}: {n_before}->{n_after} epochs — EXCLUDED ({reason})")
-            stats["kept_positions"] = []
-            info[task] = stats
-            continue
 
         epo_path = os.path.join(eeg_dir, f"sub-{subject_id}_{task}_epo.fif")
         epochs.save(epo_path, overwrite=True, verbose=False)
+        n_boundary = n_trials - n_epochs
         print(
-            f"  [eeg] {task}: {n_before}->{n_after} epochs "
-            f"({n_rej} rejected) -> {os.path.basename(epo_path)}"
+            f"  [eeg] {task}: {n_trials} stim trials -> {n_epochs} epochs saved"
+            + (f" ({n_boundary} outside recording)" if n_boundary else "")
+            + f"  bads={list(raw.info['bads'])} -> {os.path.basename(epo_path)}"
         )
-        info[task] = stats
+        info[task] = {
+            "excluded": False,           # rejection/exclusion deferred to finalize
+            "kept_positions": kept_positions,
+            "n_epochs": n_epochs,
+            "n_trials": n_trials,
+        }
     return info
 
 
@@ -458,15 +486,18 @@ def _write_alignment_manifest(manifest, eeg_info, out_dir, subject_id):
         w.writerows(manifest)
     print(f"  [align] wrote {path}  ({len(manifest)} paired trials)")
 
-    # After rejection, video clips and EEG epochs must match 1:1 per task.
+    # Video clips and saved EEG epochs should match 1:1 per task. A mismatch here
+    # is expected only when video ran out before an epoch's window (fewer clips)
+    # or a subject has no video at all; it is NOT a rejection artifact — rejection
+    # happens downstream in finalize, over this full paired set.
     vid_per_task = {}
     for row in manifest:
         vid_per_task[row["task"]] = vid_per_task.get(row["task"], 0) + 1
-    eeg_kept = {
-        t: s["n_after"] for t, s in (eeg_info or {}).items() if not s["excluded"]
+    eeg_saved = {
+        t: s["n_epochs"] for t, s in (eeg_info or {}).items() if not s["excluded"]
     }
-    for task in sorted(set(vid_per_task) | set(eeg_kept)):
-        nv, ne = vid_per_task.get(task, 0), eeg_kept.get(task, 0)
+    for task in sorted(set(vid_per_task) | set(eeg_saved)):
+        nv, ne = vid_per_task.get(task, 0), eeg_saved.get(task, 0)
         flag = "" if nv == ne else "  <-- MISMATCH, check alignment"
         print(f"    {task}: {nv} video clips / {ne} EEG epochs{flag}")
 
@@ -517,7 +548,7 @@ def pair_recording(
     xdf_path, video_path, subject_id, out_dir, *,
     eeg_stream_name="obci_eeg1", channel_strategy="interpolate",
     bandpass=None, flat_voltage=0.5, notch_freq=60.0, quality_preset="default",
-    bindings=("pmt", "hlt", "let", "ast"), task_timings=None, rejection=None,
+    bindings=("pmt", "hlt", "let", "ast"), task_timings=None,
     mode="epoch", exclude_phases=("response",), fps=None, sfreq=125.0,
     no_eeg=False, no_video=False,
 ):
@@ -528,6 +559,11 @@ def pair_recording(
     ``inventory.Participant.video``), and all parameters are explicit so Hydra is
     the single source of truth.
 
+    ``epoch`` mode is now *detect-and-defer*: it filters, epochs, and pairs EVERY
+    boundary-valid trial with all 16 channels intact (bad channels detected but
+    untouched), leaving channel repair + epoch rejection to ``finalize_dataset``.
+    ``channel_strategy`` therefore only affects the legacy ``marker`` mode here.
+
     Returns a uniform summary dict regardless of mode. Raises on a hard failure
     (e.g. missing EEG stream in epoch mode) so the pipeline can isolate the
     subject and keep going.
@@ -536,8 +572,6 @@ def pair_recording(
 
     bandpass = bandpass or {"low": 1, "high": 50}
     task_timings = task_timings or {}
-    rejection = rejection or {"enabled": True, "z_threshold": 3,
-                              "min_epochs": 5, "max_reject_pct": 50}
     # Negative thresholds disable the corresponding step (CLI convention preserved).
     flat_voltage = None if (flat_voltage is not None and flat_voltage < 0) else flat_voltage
     notch_freq = None if (notch_freq is not None and notch_freq < 0) else notch_freq
@@ -552,8 +586,8 @@ def pair_recording(
     summary = {
         "subject_id": subject_id,
         "mode": mode,
-        "channel_strategy": channel_strategy,
-        "n_bad_channels": None,
+        "n_bad_detected": None,
+        "quality_score": None,
         "task_counts": {},
         "excluded_tasks": [],
         "video_present": False,
@@ -568,24 +602,28 @@ def pair_recording(
         )
     return _pair_epoch_mode(
         streams, marker_stream, video_path, subject_id, out_dir,
-        bindings, bandpass, flat_voltage, notch_freq, channel_strategy,
-        quality_preset, eeg_stream_name, task_timings, rejection, fps,
+        bindings, bandpass, flat_voltage, notch_freq,
+        quality_preset, eeg_stream_name, task_timings, fps,
         no_eeg, no_video, summary,
     )
 
 
 def _pair_epoch_mode(
     streams, marker_stream, video_path, subject_id, out_dir,
-    bindings, bandpass, flat_voltage, notch_freq, channel_strategy,
-    quality_preset, eeg_stream_name, task_timings, rejection, fps,
+    bindings, bandpass, flat_voltage, notch_freq,
+    quality_preset, eeg_stream_name, task_timings, fps,
     no_eeg, no_video, summary,
 ):
-    """Epoch-aligned export: paired EEG epochs + per-trial video clips.
+    """Detect-and-defer epoch export: paired EEG epochs + per-trial video clips.
 
-    One stim trial -> one EEG epoch (``eeg/*_epo.fif``) + one clip with a frame-
-    timestamp sidecar (``video/<task>/*.avi`` + ``*_frames.csv``). A master
-    ``*_alignment.csv`` ties them together by (task, trial) for the model.
-    out_dir is created lazily so a subject that fails QC leaves no empty folder.
+    One stim trial -> one EEG epoch (``eeg/*_epo.fif``, all 16 channels) + one clip
+    with a frame-timestamp sidecar (``video/<task>/*.avi`` + ``*_frames.csv``). A
+    master ``*_alignment.csv`` ties them by (task, trial). QC runs for DETECTION
+    only: bad channels are recorded (in ``info['bads']`` + a ``*_channels.tsv`` /
+    ``*_qc.json`` sidecar) but NOT interpolated/dropped/zeroed, and no epochs are
+    rejected. ``finalize_dataset`` applies the channel strategy + rejection later.
+    Because nothing is dropped on quality grounds, no subject fails here for bad
+    channels (that decision is deferred), so out_dir is always created.
     """
     import mne
 
@@ -597,15 +635,22 @@ def _pair_epoch_mode(
             # is not part of the cohort (e.g. a Neurable-only session). Excluding
             # it here mirrors the pipeline, which keys on obci_eeg1.
             raise ValueError(f"no '{eeg_stream_name}' EEG stream in recording")
+        # keep_all = run QC + filter, but do NOT touch channels. keep_all clears
+        # info['bads'], so restore the detected bads from the stored QC result;
+        # the epochs then carry them for finalize, and the sidecar records them.
         raw, events, marker_dict = align_eeg(
             eeg_stream, marker_stream, bindings, bandpass, flat_voltage,
-            notch_freq, channel_strategy=channel_strategy,
+            notch_freq, channel_strategy="keep_all",
             quality_preset=quality_preset,
         )
         qc = raw.info.get("temp", {}).get("quality_check", {})
-        summary["n_bad_channels"] = len(qc.get("bads_combined", qc.get("bads", [])))
-        eeg_info = epoch_eeg(
-            raw, events, marker_dict, task_timings, rejection, out_dir, subject_id
+        raw.info["bads"] = list(qc.get("bads_combined", []))
+        summary["n_bad_detected"] = len(raw.info["bads"])
+        summary["quality_score"] = qc.get("quality_score")
+        os.makedirs(out_dir, exist_ok=True)
+        _write_qc_sidecar(qc, list(raw.info["ch_names"]), out_dir, subject_id)
+        eeg_info = epoch_eeg_all(
+            raw, events, marker_dict, task_timings, out_dir, subject_id
         )
 
     manifest = []
@@ -619,12 +664,13 @@ def _pair_epoch_mode(
             segments = epoch_video_segments(
                 video_streams[0], marker_stream, task_timings
             )
-            # Drop video clips for EEG-rejected trials / excluded tasks so the two
-            # modalities stay matched 1:1 with the model's accepted epochs.
+            # Keep only trials that produced a saved epoch (MNE drops windows past
+            # the recording bounds). No rejection filtering here — that is deferred
+            # to finalize, which drops the matching video via this manifest.
             if eeg_info:
                 segments = _match_segments_to_eeg(segments, eeg_info)
             if not segments:
-                print("  [skip] no surviving stim epochs with video frames to write.")
+                print("  [skip] no stim epochs with video frames to write.")
             else:
                 video_root = os.path.join(out_dir, "video")
                 manifest = write_epoch_clips(
@@ -638,10 +684,8 @@ def _pair_epoch_mode(
         os.makedirs(out_dir, exist_ok=True)
         _write_alignment_manifest(manifest, eeg_info, out_dir, subject_id)
 
-    summary["task_counts"] = {
-        t: (s["n_after"] if not s["excluded"] else 0) for t, s in eeg_info.items()
-    }
-    summary["excluded_tasks"] = [t for t, s in eeg_info.items() if s["excluded"]]
+    summary["task_counts"] = {t: s["n_epochs"] for t, s in eeg_info.items()}
+    summary["excluded_tasks"] = []          # exclusion is a finalize decision
     summary["video_present"] = bool(manifest)
     summary["paired_trials"] = len(manifest)
     return summary

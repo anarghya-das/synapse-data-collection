@@ -32,8 +32,8 @@ hydra:
   job:
     chdir: false
 
-# Output goes to outputs/paired/<name>/ . Defaults to the EEG variant name so
-# different bad-channel / filter settings don't clobber each other's clips.
+# Output goes to outputs/paired/ (flat; no variant subfolder). ``name`` is still
+# recorded in the manifest for which preprocessing variant was used.
 name: ${preprocessing.name}
 
 paths:

@@ -107,36 +107,62 @@ So the rebuild is faithful; differences are small and fully explained (epoch-rej
 sensitivity + minor QC drift). Note CTRL01/02/03 are resolved from their `-old` folders
 (renamed after the pkl was built; the published `exclude -old` discovery would now drop them).
 
-## Multimodal pairing (video + EEG)
+## Multimodal pairing (video + EEG) — two stages
 
-`pipelines/pair_video.py` pairs the webcam recording with the EEG for a multimodal
-model. It is the Hydra/inventory port of `../synapse/split_video.py` (the alignment
-library lives in `synapse_qc/av_align.py`). Files resolve through `inventory` (XDF +
-the per-participant `.avi`), and **the EEG parameters are the same `conf/preprocessing/`
-group `build_dataset` uses**, so the paired EEG stays in lock-step with the processed-pkl
-variants (stream, bandpass, notch, `channel_strategy`, quality, epoch rejection are all
-overridable).
+The DL dataset is built in **two Hydra pipelines**, deliberately split so the slow,
+one-time alignment + video encoding is separated from the fast, swappable channel-handling
+experiments. The alignment library lives in `synapse_qc/av_align.py`; files resolve through
+`inventory` (XDF + the per-participant `.avi`).
+
+### 1. `pipelines/pair_video.py` → `outputs/paired/` (slow, one-time)
+
+Filters, epochs, and pairs **every** boundary-valid trial with **all 16 channels intact**.
+QC runs for **detection only** — bad channels are recorded (in each `_epo.fif`'s
+`info['bads']` + per-subject `*_channels.tsv` / `*_qc.json` sidecar) but **not**
+interpolated/dropped/zeroed, and **no epoch rejection** happens. Nothing is dropped on
+channel quality here (that is deferred to finalize), so a recording that would fail QC still
+produces paired data.
 
 ```bash
-python -m pipelines.pair_video                                   # usable cohort, published EEG, epoch mode
-python -m pipelines.pair_video preprocessing=drop                # swap bad-channel handling
+python -m pipelines.pair_video                                   # usable cohort, epoch mode
 python -m pipelines.pair_video video.mode=marker                 # legacy marker-to-marker clips
 python -m pipelines.pair_video preprocessing.bandpass.low=2 preprocessing.notch_freq=-1   # notch<0 disables
 python -m pipelines.pair_video cohort=published video.no_video=true   # EEG epochs only
 ```
 - **`epoch` mode** (default): one stim-locked clip + one EEG epoch per trial, both windowed
-  to `tasks.timings`. Video clips are matched **1:1 to the EEG epochs that survive z-score
-  rejection** (rejected trials are dropped from the video side too), with a per-frame
-  `*_frames.csv` sidecar (`t_rel_stim_s`, `t_lsl_s`) — the alignment key. Use
-  `av_align.resample_frames_to_eeg` / `nearest_frame_for_eeg` to map frames onto the 125 Hz
-  EEG grid; **never** use a nominal fps (the webcam rate is sub-nominal and dejittered).
-- **`marker` mode**: legacy marker-to-marker segments + a single filtered `Raw.fif`.
-- `conf/video/` — video-only options (`mode`, `sfreq`, `fps`, `exclude_phases`, `bindings`,
-  `no_eeg`/`no_video`). Output: `outputs/paired/<name>/sub-<PID>/{eeg,video}/` + per-subject
-  `*_alignment.csv` + a top-level `dataset_manifest.csv`. **Clips are large build artifacts**
-  (`outputs/paired/` is gitignored). A recording without `obci_eeg1` (e.g. Neurable-only) is
-  isolated as a per-subject FAILED row, not a crash. (Like `build_dataset`, an empty cohort
-  list means **all** discovered IDs for that group, not none.)
+  to `tasks.timings`, with a per-frame `*_frames.csv` sidecar (`t_rel_stim_s`, `t_lsl_s`) —
+  the alignment key. Use `av_align.resample_frames_to_eeg` / `nearest_frame_for_eeg` to map
+  frames onto the 125 Hz EEG grid; **never** use a nominal fps (the webcam rate is
+  sub-nominal and dejittered). Applies stream/bandpass/notch/quality; **`channel_strategy`
+  and `epoch_rejection` are ignored** (finalize's job).
+- **`marker` mode**: legacy marker-to-marker segments + a single filtered `Raw.fif` (still
+  honours `channel_strategy`).
+- Output: `outputs/paired/<PID>/{eeg,video}/` + per-subject `*_alignment.csv` + a top-level
+  `dataset_manifest.csv`. **Clips are large build artifacts** (`outputs/paired/` gitignored).
+  A recording without `obci_eeg1` (e.g. Neurable-only) is a per-subject FAILED row, not a crash.
+
+### 2. `pipelines/finalize_dataset.py` → `outputs/dataset/<name>/` (fast, swappable)
+
+Applies `channel_strategy` + PTP `epoch_rejection` from the **same `conf/preprocessing/`
+group** `build_dataset` uses, so finalized variants stay in lock-step. It emits a per-channel
+**validity mask** (`*_channel_mask.npy`, `1`=real / `0`=interpolated/masked/dropped +
+`*_channels.json`) and re-filters each `*_alignment.csv` to the surviving pairs — **video is
+never re-encoded**, clips are referenced in place under `outputs/paired/`.
+
+```bash
+python -m pipelines.finalize_dataset                          # interpolate + z=3 (= old baked-in behaviour)
+python -m pipelines.finalize_dataset preprocessing=zero_mask  # zero bad channels, keep 16 + mask
+python -m pipelines.finalize_dataset preprocessing=drop       # drop bad channels (variable ch count)
+python -m pipelines.finalize_dataset preprocessing=keep_all   # raw bad channels + mask
+python -m pipelines.finalize_dataset preprocessing.epoch_rejection.enabled=false
+```
+- **Why two stages:** rejection PTP is computed over the **good channels only** (a noisy bad
+  channel can't corrupt it — only possible because channel handling is decoupled);
+  interpolation is irreversible, so pairing keeps raw channels + a mask and you can try
+  masking vs interpolation without re-running the slow pair step. Build interpolate/zero_mask/
+  drop side by side from a single pair run.
+- An empty `cohort.exp` / `cohort.ctrl` list means **none** for that group unless
+  `cohort.name=all` (then both groups auto-discover).
 
 ## Two EEG streams (important)
 

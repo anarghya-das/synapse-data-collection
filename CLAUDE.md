@@ -72,5 +72,33 @@ independent. `synapse_qc/manual.py` can load them for a later comparison step.
   `../synapse` preprocessing code (faithful mirror). See README "Processed-data variants".
   `inventory.discover()` is the shared ID→file layer.
 
+## The multimodal (video+EEG) pipeline is two stages — detect-and-defer
+The DL dataset is built in two Hydra pipelines, deliberately split so the SLOW,
+one-time work (temporal EEG↔video alignment + video re-encoding) is separated from
+the FAST, swappable channel-handling experiments:
+- `pipelines/pair_video.py` → `outputs/paired/`. Filters, epochs, and pairs EVERY
+  boundary-valid trial with ALL 16 channels intact. QC runs for DETECTION ONLY: bad
+  channels are recorded (in each `_epo.fif`'s `info['bads']` + a per-subject
+  `*_channels.tsv`/`*_qc.json` sidecar) but NOT interpolated/dropped/zeroed, and NO
+  epoch rejection happens. So no subject is dropped here on channel quality — that
+  decision is deferred. `preprocessing.channel_strategy`/`epoch_rejection` are IGNORED
+  by epoch mode (they still apply to legacy `marker` mode).
+- `pipelines/finalize_dataset.py` (`conf/finalize.yaml`) → `outputs/dataset/<name>/`.
+  Applies `channel_strategy` (interpolate|zero_mask|drop|keep_all) + PTP `epoch_rejection`
+  from the `preprocessing` group, emits a per-channel validity mask (`*_channel_mask.npy`,
+  1=real / 0=interpolated/masked/dropped), and re-filters the alignment CSV to surviving
+  pairs (video is never re-encoded — clips are referenced in place under `outputs/paired`).
+  Run it once per strategy to get interpolate/zero_mask/drop variants side by side.
+- WHY this matters: (1) rejection PTP is computed over GOOD channels only, so a noisy
+  bad channel can't corrupt it — this only works because channel handling is decoupled;
+  (2) interpolation is irreversible, so pairing keeps raw channels + a mask, letting you
+  try masking vs interpolation without re-running the slow pair step; (3) `interpolate`+z=3
+  in finalize reproduces the old baked-in behaviour.
+- `pair_video` patches `utils.quality_check` → `synapse_qc.qc_core.quality_check` (robust,
+  filtering-invariant, max off-diag corr). The analysis-repo `quality_check` is the LEGACY
+  mean-corr metric that flags common-mode DC drift as bad and fails whole healthy recordings
+  (EXP08/EXP10/CTRL09/CTRL12 score 0 legacy / 75–100 robust). `build_dataset` does NOT patch
+  it — its legacy QC is intentional there (faithful mirror of the published pkl).
+
 ## Tooling
 - Use `bun` (not npm/npx) for any JS tooling; use Context7 MCP for library docs.

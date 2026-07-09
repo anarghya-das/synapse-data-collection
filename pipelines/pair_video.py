@@ -8,7 +8,7 @@ Ports ``../synapse/split_video.py`` into this repo's conventions:
     quality / epoch_rejection are all configurable and stay in lock-step with the
     processed-pkl variants;
   * task windows from ``tasks.timings``; video options from the ``video`` group;
-  * outputs under ``outputs/paired/<name>/`` (one ``sub-<PID>/`` tree per subject
+  * outputs under ``outputs/paired/`` (one ``<PID>/`` tree per subject
     + a top-level ``dataset_manifest.csv``).
 
 The published EEG alignment helpers (``create_mne`` and the marker/event
@@ -41,12 +41,27 @@ warnings.filterwarnings("ignore")
 
 
 def _import_utils(synapse_repo, montage_abs):
-    """Put the analysis repo on the path and inject the absolute montage path into
-    ``create_mne`` (so EEG alignment does not depend on the CWD). Mirrors
-    ``build_dataset._import_published`` but only needs ``preprocessing.utils``."""
+    """Put the analysis repo on the path and patch two things into
+    ``preprocessing.utils`` (so EEG alignment does not depend on the CWD and uses
+    this repo's vetted QC). Mirrors ``build_dataset._import_published`` but only
+    needs ``preprocessing.utils``.
+
+    1. ``create_mne`` gets the absolute montage path injected (no CWD dependency).
+    2. ``quality_check`` is replaced by ``synapse_qc.qc_core.quality_check`` (the
+       robust, filtering-invariant method). The analysis repo's own
+       ``quality_check`` still uses the LEGACY mean-correlation rule, which flags
+       healthy ear-EEG channels sharing common-mode DC drift as bad -- on raw
+       data that over-interpolates channels and even fails whole recordings
+       (EXP08/EXP10/CTRL09/CTRL12 scored 0 under legacy but 75-100 under robust).
+       ``create_mne`` looks up ``quality_check`` as a module global, so patching
+       ``utils.quality_check`` routes bad-channel detection through the robust
+       metric. The return dict is a superset (same ``bads_combined`` /
+       ``quality_score`` keys), so ``create_mne`` consumes it unchanged. Scoped to
+       this pairing pipeline only -- ``build_dataset`` is untouched."""
     if synapse_repo not in sys.path:
         sys.path.insert(0, synapse_repo)
     from preprocessing import utils  # same module av_align.align_eeg looks up
+    from synapse_qc import qc_core
 
     _orig = utils.create_mne
 
@@ -55,19 +70,30 @@ def _import_utils(synapse_repo, montage_abs):
         return _orig(*a, **k)
 
     utils.create_mne = _create_mne_abs   # av_align calls utils.create_mne at run time
+    utils.quality_check = qc_core.quality_check  # robust QC (create_mne calls this)
     return utils
 
 
 def _resolve_cohort(cfg):
     """Yield ``(group, pid, Participant|None)`` for the requested cohort.
 
-    Same selection rule as ``build_dataset._resolve_cohort`` (empty list => every
-    discovered ID for that group), but we keep the whole Participant because we
-    also need its resolved ``.avi`` (``p.video``)."""
+    Non-empty list => those IDs. Empty list => auto-discover only when
+    ``cohort.name`` is ``all`` (see ``conf/cohort/all.yaml``); otherwise
+    empty means none for that group (so CLI ``cohort.exp=[] cohort.ctrl=[CTRL10]``
+    runs a single control without pulling in every experimental)."""
     parts = {p.pid: p for p in inventory.discover()}
+
+    def _ids(configured, prefix):
+        items = list(configured)
+        if items:
+            return items
+        if cfg.cohort.name == "all":
+            return [p for p in parts if p.startswith(prefix)]
+        return []
+
     want = {
-        "EXP": list(cfg.cohort.exp) or [p for p in parts if p.startswith("EXP")],
-        "CTRL": list(cfg.cohort.ctrl) or [p for p in parts if p.startswith("CTRL")],
+        "EXP": _ids(cfg.cohort.exp, "EXP"),
+        "CTRL": _ids(cfg.cohort.ctrl, "CTRL"),
     }
     for grp, ids in want.items():
         for pid in ids:
@@ -78,7 +104,7 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
     """Top-level CSV + JSON capturing per-subject status and the run provenance."""
     csv_path = os.path.join(out_root, "dataset_manifest.csv")
     cols = [
-        "group", "subject_id", "status", "mode", "n_bad_channels",
+        "group", "subject_id", "status", "mode", "n_bad_detected", "quality_score",
         "video_present", "paired_trials", "pmt", "hlt", "let", "ast",
         "excluded_tasks", "error",
     ]
@@ -90,7 +116,8 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
             "subject_id": r.get("subject_id", ""),
             "status": r.get("status", ""),
             "mode": r.get("mode", cfg.video.mode),
-            "n_bad_channels": r.get("n_bad_channels"),
+            "n_bad_detected": r.get("n_bad_detected"),
+            "quality_score": r.get("quality_score"),
             "video_present": r.get("video_present"),
             "paired_trials": r.get("paired_trials", 0),
             "pmt": tc.get("pmt", 0), "hlt": tc.get("hlt", 0),
@@ -129,11 +156,13 @@ def main(cfg: DictConfig) -> None:
 
     pre = cfg.preprocessing
     vid = cfg.video
-    out_root = os.path.join(REPO, cfg.paths.paired_dir, cfg.name)
+    out_root = os.path.join(REPO, cfg.paths.paired_dir)
     os.makedirs(out_root, exist_ok=True)
 
-    # All EEG knobs come from the `preprocessing` group -> fully configurable and
-    # identical to what build_dataset feeds create_mne / the epoch rejection.
+    # Pairing is detect-and-defer: it applies stream/bandpass/notch/quality
+    # (detection) but NOT channel_strategy or epoch_rejection -- those are consumed
+    # downstream by finalize_dataset, over this full paired set. channel_strategy is
+    # still passed for the legacy marker mode.
     eeg_kw = dict(
         eeg_stream_name=pre.eeg_stream_name,
         channel_strategy=pre.channel_strategy,
@@ -143,7 +172,6 @@ def main(cfg: DictConfig) -> None:
         quality_preset=pre.quality.preset,
         bindings=list(vid.bindings),
         task_timings=OmegaConf.to_container(cfg.tasks.timings, resolve=True),
-        rejection=OmegaConf.to_container(pre.epoch_rejection, resolve=True),
         mode=vid.mode,
         exclude_phases=list(vid.exclude_phases),
         fps=vid.fps,
@@ -154,9 +182,9 @@ def main(cfg: DictConfig) -> None:
 
     print("=" * 70)
     print(f"PAIR VIDEO  name={cfg.name}  cohort={cfg.cohort.name}  mode={vid.mode}")
-    print(f"  EEG: stream={pre.eeg_stream_name}  strategy={pre.channel_strategy}  "
-          f"bp={eeg_kw['bandpass']}  notch={pre.notch_freq}  "
-          f"reject_enabled={eeg_kw['rejection'].get('enabled')}")
+    print(f"  EEG: stream={pre.eeg_stream_name}  bp={eeg_kw['bandpass']}  "
+          f"notch={pre.notch_freq}  quality={pre.quality.preset}  "
+          f"(detect-only; channel_strategy + rejection deferred to finalize)")
     print(f"  -> {os.path.relpath(out_root, REPO)}")
     print("=" * 70)
 
@@ -169,7 +197,7 @@ def main(cfg: DictConfig) -> None:
                         "paired_trials": 0})
             rows.append(row)
             continue
-        out_dir = os.path.join(out_root, f"sub-{pid}")
+        out_dir = os.path.join(out_root, pid)
         try:
             summary = av_align.pair_recording(
                 p.xdf_path, p.video or None, pid, out_dir, **eeg_kw
@@ -180,9 +208,17 @@ def main(cfg: DictConfig) -> None:
             row.update({"status": "FAILED", "error": str(e), "paired_trials": 0})
         rows.append(row)
 
-    eeg_params = {k: eeg_kw[k] for k in (
-        "eeg_stream_name", "channel_strategy", "bandpass", "flat_voltage",
-        "notch_freq", "quality_preset", "rejection")}
+    # Record what pairing actually applied vs. what it deferred, so the manifest
+    # documents that channel_strategy + epoch_rejection are finalize's job.
+    eeg_params = {
+        "applied": {k: eeg_kw[k] for k in (
+            "eeg_stream_name", "bandpass", "flat_voltage",
+            "notch_freq", "quality_preset")},
+        "deferred_to_finalize": {
+            "channel_strategy": pre.channel_strategy,
+            "epoch_rejection": OmegaConf.to_container(pre.epoch_rejection, resolve=True),
+        },
+    }
     csv_path, manifest = _write_dataset_manifest(rows, out_root, cfg, eeg_params)
 
     print("\n" + "=" * 70)
