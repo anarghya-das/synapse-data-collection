@@ -23,7 +23,7 @@ import time
 
 import numpy as np
 
-EEG_NAME = "obci_eeg1"
+EEG_TYPE = "EEG"        # resolve by LSL *type*, not name, so any board works
 VIDEO_NAME = "VideoStream"
 PROBE_S = 3.0
 MIN_RATE_FRAC = 0.5     # fail if effective rate < this * nominal srate
@@ -31,19 +31,23 @@ FLAT_STD_UV = 1.0       # if EVERY channel's DC-removed SD is below this -> froz
 VIDEO_MIN_FRAMES = 5    # frames that must arrive for the camera to count as live
 
 
-def assert_eeg_flowing(name=EEG_NAME, probe_s=PROBE_S, timeout=10.0):
-    """Resolve ``name`` and confirm real samples are flowing from it.
+def assert_eeg_flowing(stream_type=EEG_TYPE, probe_s=PROBE_S, timeout=10.0):
+    """Resolve an EEG stream by *type* and confirm real samples are flowing.
 
-    Returns ``(ok: bool, detail: str)`` and never raises, so it is safe to call
-    inline before the LabRecorder ``start`` command.
+    Resolving by LSL stream *type* (``"EEG"``) rather than a fixed name keeps the
+    gate device-agnostic: it accepts OpenBCI's ``obci_eeg1``, a Neurable stream,
+    or any other board that advertises an ``EEG``-type LSL stream. Returns
+    ``(ok: bool, detail: str)`` and never raises, so it is safe to call inline
+    before the LabRecorder ``start`` command.
     """
     from pylsl import StreamInlet, resolve_byprop
 
-    infos = resolve_byprop("name", name, timeout=timeout)
+    infos = resolve_byprop("type", stream_type, timeout=timeout)
     if not infos:
-        return False, f"EEG '{name}' NOT FOUND (no stream resolved in {timeout:.0f}s)"
+        return False, f"No '{stream_type}' stream FOUND (nothing resolved in {timeout:.0f}s)"
 
     info = infos[0]
+    name = info.name()      # actual device stream name, for logging
     nominal = info.nominal_srate() or 0.0
     inlet = StreamInlet(info, max_buflen=int(probe_s) + 5, recover=False)
     try:
@@ -81,19 +85,22 @@ def assert_eeg_flowing(name=EEG_NAME, probe_s=PROBE_S, timeout=10.0):
         return False, (f"EEG '{name}' all {X.shape[1]} channels flat/frozen "
                        "(board off, not streaming, or fully disconnected)")
 
-    return True, f"EEG flowing -- ~{rate:.0f} Hz, {X.shape[1]} ch, {len(X)} samples"
+    return True, f"EEG '{name}' flowing -- ~{rate:.0f} Hz, {X.shape[1]} ch, {len(X)} samples"
 
 
-def preflight_eeg_gate(win=None, name=EEG_NAME):
+def preflight_eeg_gate(win=None, stream_type=EEG_TYPE, name=None):
     """Check the EEG stream and log the verdict -- no GUI, no prompt.
 
     Returns ``(ok: bool, detail: str)``. On failure the caller (the psyexp)
     simply ends the experiment (``original_quit()``); this function only checks
     and writes the reason to the console and the PsychoPy log file so it lands
     in ``<participant>.log``. ``win`` is accepted but unused (kept so the
-    existing Builder call site does not need to change).
+    existing Builder call site does not need to change). ``name`` is a legacy
+    no-op kept only so a stale ``hearing_lastrun.py`` (which still passes
+    ``name="obci_eeg1"``) does not crash before it is regenerated -- the stream
+    is now resolved by *type*, so the name is ignored.
     """
-    ok, detail = assert_eeg_flowing(name=name)
+    ok, detail = assert_eeg_flowing(stream_type=stream_type)
     line = f"EEG preflight {'OK' if ok else 'FAILED'}: {detail}"
     print(f"[preflight] {line}")
     try:

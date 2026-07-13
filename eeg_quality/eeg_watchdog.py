@@ -8,8 +8,8 @@ PsychoPy bundle. Open it in its own window (drag to a second monitor) before a
 session and watch it for the whole recording.
 
 It continuously:
-  * subscribes to the ``obci_eeg1`` LSL stream (its own inlet; LSL allows many
-    consumers, so it does not disturb LabRecorder),
+  * subscribes to the first ``EEG``-type LSL stream -- OpenBCI, Neurable, etc.
+    (its own inlet; LSL allows many consumers, so it does not disturb LabRecorder),
   * tracks data FLOW -- flags the moment samples stop (board/Bluetooth drop),
   * scores a rolling window with ``qc_core.quality_check(robust)`` every ~1.5 s
     -- flags a montage that is connected but railed/dead,
@@ -36,7 +36,7 @@ import numpy as np
 
 import qc_core
 
-EEG_NAME = "obci_eeg1"
+EEG_TYPE = "EEG"           # resolve by LSL *type*, not name (OpenBCI/Neurable/...)
 MIN_QUALITY_SCORE = 40.0   # robust quality_score (0-100) below this = problem
 QC_PRESET = "default"
 
@@ -73,9 +73,9 @@ def score_live(samples_uv, sfreq, preset=QC_PRESET):
 # Background sampler: pull from LSL, track flow, score a rolling window
 # --------------------------------------------------------------------------- #
 class WatchdogSampler(threading.Thread):
-    def __init__(self, name, window_s, interval_s, stall_s, min_score, preset):
+    def __init__(self, stream_type, window_s, interval_s, stall_s, min_score, preset):
         super().__init__(daemon=True)
-        self.name = name
+        self.stream_type = stream_type
         self.window_s = window_s
         self.interval_s = interval_s
         self.stall_s = stall_s
@@ -110,11 +110,11 @@ class WatchdogSampler(threading.Thread):
 
         while not self._stop.is_set():
             if inlet is None:
-                infos = resolve_byprop("name", self.name, timeout=1.0)
+                infos = resolve_byprop("type", self.stream_type, timeout=1.0)
                 if not infos:
                     self._set(present=False, bad=True, age=float("inf"),
                               score=None, bads=[], n=0,
-                              msg=f"waiting for '{self.name}'...")
+                              msg=f"waiting for '{self.stream_type}' stream...")
                     continue
                 info = infos[0]
                 nominal = info.nominal_srate() or 125.0
@@ -122,7 +122,7 @@ class WatchdogSampler(threading.Thread):
                 buf.clear()
                 last_recv = time.time()
                 score, bads, chn = None, [], []
-                self._set(present=True, msg="connected")
+                self._set(present=True, msg=f"connected: {info.name()}")
 
             chunk, tss = inlet.pull_chunk(timeout=0.5, max_samples=4096)
             now = time.time()
@@ -168,7 +168,7 @@ def run_gui(sampler, args):
     import tkinter as tk
 
     root = tk.Tk()
-    root.title(f"EEG Watchdog -- {args.name}")
+    root.title(f"EEG Watchdog -- type={args.stream_type}")
     root.configure(bg="#111")
     root.geometry("540x380")
 
@@ -243,7 +243,8 @@ def run_text(sampler, args):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--name", default=EEG_NAME, help="EEG LSL stream name.")
+    p.add_argument("--stream-type", default=EEG_TYPE,
+                   help="EEG LSL stream *type* to resolve (OpenBCI/Neurable/... all use 'EEG').")
     p.add_argument("--min-score", type=float, default=MIN_QUALITY_SCORE,
                    help="quality_score below this = problem.")
     p.add_argument("--window", type=float, default=10.0, help="rolling seconds scored.")
@@ -253,7 +254,7 @@ def main(argv=None):
     p.add_argument("--no-gui", action="store_true", help="terminal status line instead of a window.")
     a = p.parse_args(argv)
 
-    sampler = WatchdogSampler(a.name, a.window, a.interval, a.stall, a.min_score, a.preset)
+    sampler = WatchdogSampler(a.stream_type, a.window, a.interval, a.stall, a.min_score, a.preset)
     sampler.start()
     if a.no_gui:
         run_text(sampler, a)
