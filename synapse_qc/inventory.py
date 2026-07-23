@@ -25,9 +25,30 @@ import os
 import glob
 from dataclasses import dataclass, field
 
-# Resolved at import time relative to this file: <repo>/data
 _THIS = os.path.dirname(os.path.abspath(__file__))
-DATA_ROOT = os.path.normpath(os.path.join(_THIS, "..", "data"))
+
+
+def _default_data_root():
+    """Where the raw ``data/`` tree lives, resolved at import time.
+
+    Lets the recordings be relocated off the repo (e.g. onto the lab server
+    ``/data1/anarghya/synapse-data``) without editing code. Precedence:
+      1. ``$SYNAPSE_DATA_ROOT`` -- the raw-data dir directly.
+      2. ``$SYNAPSE_DATA_BASE`` -- a base holding ``data/`` + ``outputs/``; the
+         raw dir is ``<base>/data``.
+      3. ``<repo>/data`` (the in-repo default; original behaviour).
+    Hydra pipelines can still override per-call via ``discover(data_root=...)``.
+    """
+    env = os.environ.get("SYNAPSE_DATA_ROOT")
+    if env:
+        return os.path.normpath(env)
+    base = os.environ.get("SYNAPSE_DATA_BASE")
+    if base:
+        return os.path.normpath(os.path.join(base, "data"))
+    return os.path.normpath(os.path.join(_THIS, "..", "data"))
+
+
+DATA_ROOT = _default_data_root()
 
 GROUP_DIRS = {
     "EXP": "02_Experimental",

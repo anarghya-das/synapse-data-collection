@@ -35,6 +35,11 @@ hydra:
 name: ${preprocessing.name}
 
 paths:
+  # Base dir holding the `outputs/` trees. null => the repo root. Point it at the
+  # relocated copy (server / SSHFS mount) to read/write there:
+  #   python -m pipelines.finalize_dataset paths.root=/data1/anarghya/synapse-data
+  # Also honored via $SYNAPSE_DATA_BASE.
+  root: null
   montage: assets/ceegrid_montage_head.npz   # for channel_strategy=interpolate
   paired_dir: outputs/paired                 # input: detect-and-defer paired data
   dataset_dir: outputs/dataset               # output root (per-variant subdir)

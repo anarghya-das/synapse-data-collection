@@ -50,9 +50,9 @@ def _import_published(synapse_repo, montage_abs):
     return pp
 
 
-def _resolve_cohort(cfg):
+def _resolve_cohort(cfg, data_root=None):
     """Return ({EXP: {pid: xdf}}, {CTRL: {pid: xdf}}, skipped[]) for the cohort."""
-    parts = {p.pid: p for p in inventory.discover()}
+    parts = {p.pid: p for p in inventory.discover(data_root=data_root)}
     want = {
         "EXP": list(cfg.cohort.exp) or [p for p in parts if p.startswith("EXP")],
         "CTRL": list(cfg.cohort.ctrl) or [p for p in parts if p.startswith("CTRL")],
@@ -80,6 +80,11 @@ def main(cfg: DictConfig) -> None:
           f"channel_strategy={pre.channel_strategy}")
     print("=" * 70)
 
+    # Base for the relocatable data/outputs trees (assets stay repo-relative).
+    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
+    data_root = (cfg.paths.get("data_root") or os.environ.get("SYNAPSE_DATA_ROOT")
+                 or os.path.join(base, "data"))
+
     montage_abs = os.path.join(REPO, cfg.paths.montage)
     pp = _import_published(cfg.paths.synapse_repo, montage_abs)
 
@@ -93,7 +98,7 @@ def main(cfg: DictConfig) -> None:
     epoch_rejection_config = OmegaConf.to_container(pre.epoch_rejection, resolve=True)
     channel_strategy = pre.channel_strategy
 
-    mapping, resolved, skipped = _resolve_cohort(cfg)
+    mapping, resolved, skipped = _resolve_cohort(cfg, data_root)
     print(f"Resolved EXP={len(mapping['EXP'])} CTRL={len(mapping['CTRL'])} "
           f"| skipped={len(skipped)}")
 
@@ -149,7 +154,7 @@ def main(cfg: DictConfig) -> None:
         "config": OmegaConf.to_container(cfg, resolve=True),
     }
 
-    out_dir = os.path.join(REPO, cfg.paths.output_dir)
+    out_dir = os.path.join(base, cfg.paths.output_dir)
     os.makedirs(out_dir, exist_ok=True)
     pkl_path = os.path.join(out_dir, f"{variant}.pkl")
     with open(pkl_path, "wb") as f:
@@ -173,7 +178,7 @@ def main(cfg: DictConfig) -> None:
         "clinical_scores_nonempty": sum(1 for v in clinical_scores.values() if v),
         "demographics_nonempty": len(demographics),
         "responses_loaded": len(responses),
-        "pkl": os.path.relpath(pkl_path, REPO),
+        "pkl": os.path.relpath(pkl_path, base),
         "pkl_mb": round(os.path.getsize(pkl_path) / 1024 / 1024, 1),
     }
     with open(os.path.join(out_dir, f"{variant}.manifest.json"), "w") as f:

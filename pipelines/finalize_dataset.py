@@ -149,7 +149,7 @@ def _reject_epochs(epochs, mask, rej):
     return kept, n_before, n_after, excluded, reason
 
 
-def _finalize_subject(pid, paired_subj, out_subj, strategy, rej, montage_file):
+def _finalize_subject(pid, paired_subj, out_subj, strategy, rej, montage_file, base=REPO):
     """Finalize one subject; returns a summary row (or None if it has no epochs)."""
     import mne
 
@@ -203,11 +203,11 @@ def _finalize_subject(pid, paired_subj, out_subj, strategy, rej, montage_file):
             frames_abs = os.path.join(paired_subj, r["video_frames_csv"])
             row = dict(r)
             row["eeg_epoch_index"] = new_index[old]
-            # Rewrite all path columns to a single, consistent repo-relative form
+            # Rewrite all path columns to a single, consistent base-relative form
             # (the paired frames path was relative to the paired subject dir).
-            row["eeg_file"] = os.path.relpath(os.path.join(eeg_out, fname), REPO)
-            row["video_clip"] = os.path.relpath(video_abs, REPO)
-            row["video_frames_csv"] = os.path.relpath(frames_abs, REPO)
+            row["eeg_file"] = os.path.relpath(os.path.join(eeg_out, fname), base)
+            row["video_clip"] = os.path.relpath(video_abs, base)
+            row["video_frames_csv"] = os.path.relpath(frames_abs, base)
             final_align.append(row)
 
     if final_ch_names is None:
@@ -286,15 +286,17 @@ def main(cfg: DictConfig) -> None:
     pre = cfg.preprocessing
     strategy = pre.channel_strategy
     rej = OmegaConf.to_container(pre.epoch_rejection, resolve=True)
+    # Base for the relocatable outputs trees (montage asset stays repo-relative).
+    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
     montage_file = os.path.join(REPO, cfg.paths.montage)
-    paired_root = os.path.join(REPO, cfg.paths.paired_dir)
-    out_root = os.path.join(REPO, cfg.paths.dataset_dir, cfg.name)
+    paired_root = os.path.join(base, cfg.paths.paired_dir)
+    out_root = os.path.join(base, cfg.paths.dataset_dir, cfg.name)
     os.makedirs(out_root, exist_ok=True)
 
     print("=" * 70)
     print(f"FINALIZE  name={cfg.name}  strategy={strategy}  "
           f"reject_enabled={rej.get('enabled')}")
-    print(f"  {os.path.relpath(paired_root, REPO)} -> {os.path.relpath(out_root, REPO)}")
+    print(f"  {os.path.relpath(paired_root, base)} -> {os.path.relpath(out_root, base)}")
     print("=" * 70)
 
     subjects = sorted(
@@ -307,7 +309,7 @@ def main(cfg: DictConfig) -> None:
         out_subj = os.path.join(out_root, pid)
         try:
             summary = _finalize_subject(
-                pid, paired_subj, out_subj, strategy, rej, montage_file)
+                pid, paired_subj, out_subj, strategy, rej, montage_file, base)
             if summary is None:
                 continue
             summary["status"] = "ok"

@@ -57,6 +57,21 @@ re-sync this file; the canonical implementation lives in the analysis repo.
 They were deliberately left there (not copied in) so the first QC pass is
 independent. `synapse_qc/manual.py` can load them for a later comparison step.
 
+## Data lives on the server; paths are relocatable
+The canonical `data/` (17 GB raw) + `outputs/` (~9 GB generated) were MOVED off
+this repo to `ub-polar:/data1/anarghya/synapse-data/{data,outputs}` (local copies
+deleted). Nothing is hardcoded to the repo anymore: `inventory._default_data_root()`
+honors `$SYNAPSE_DATA_ROOT` / `$SYNAPSE_DATA_BASE`, and the Hydra pipelines take
+`paths.root` (base holding data/+outputs) + `paths.data_root` (raw only), both
+also reading those env vars, defaulting to the repo root so old behaviour is
+unchanged when nothing is set. Precedence + examples are in the README "Data
+location" section. WHY split base vs data_root: outputs and raw data can sit in
+different places. WHY assets stay repo-relative: montage/event-map/`../synapse`
+are code+config, not data — they were deliberately NOT relocated, so only `data/`
+and the `outputs/*` trees follow the base. To actually run the pipelines you must
+either mount the server path (SSHFS) or run on the server; assets still resolve
+from the repo checkout.
+
 ## Project layout / conventions
 - All generated artifacts go under `outputs/` (`quality/`, `processed/`, `runs/`); source/
   config/data stay at the root. `outputs/processed/*.pkl` (~450 MB) and `outputs/runs/` are

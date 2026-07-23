@@ -37,6 +37,12 @@ hydra:
 name: ${preprocessing.name}
 
 paths:
+  # Base dir holding the raw `data/` and generated `outputs/` trees. null => the
+  # repo root. Point it at the relocated copy (server / SSHFS mount) to read/write
+  # there:  python -m pipelines.pair_video paths.root=/data1/anarghya/synapse-data
+  # Also honored via $SYNAPSE_DATA_BASE. Raw recordings: $SYNAPSE_DATA_ROOT / data_root.
+  root: null
+  data_root: null                                            # explicit raw dir; null => <root>/data
   synapse_repo: /Users/anarghya/Developer/research/synapse   # published EEG-alignment helpers (create_mne, events)
   montage: assets/ceegrid_montage_head.npz                   # injected into create_mne (no CWD dependency)
   paired_dir: outputs/paired

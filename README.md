@@ -4,6 +4,32 @@ Raw data and quality analysis for the SYNAPSE CEEGrid ear-EEG hyperacusis study.
 The analysis/paper code lives separately in `../synapse`; this repo holds the
 participant recordings and the tooling that reads and quality-checks them.
 
+## Data location (relocatable)
+
+By default the raw `data/` and generated `outputs/` trees live under the repo
+root. They can be moved elsewhere (e.g. the lab server
+`ub-polar:/data1/anarghya/synapse-data`, or an SSHFS mount of it) without
+editing code — point the tooling at the base dir. The published copy of `data/`
++ `outputs/` lives at `/data1/anarghya/synapse-data`.
+
+- **Env var (all entry points, incl. `run_quality.py` / `spotcheck.py`):**
+  ```bash
+  export SYNAPSE_DATA_BASE=/data1/anarghya/synapse-data   # holds data/ + outputs/
+  # or point only the raw dir:  export SYNAPSE_DATA_ROOT=/path/to/data
+  ```
+- **Hydra pipelines (per-run override):**
+  ```bash
+  python -m pipelines.build_dataset   paths.root=/data1/anarghya/synapse-data
+  python -m pipelines.pair_video      paths.root=/data1/anarghya/synapse-data
+  python -m pipelines.finalize_dataset paths.root=/data1/anarghya/synapse-data
+  # raw-only override: paths.data_root=/path/to/data
+  ```
+- **`run_quality.py`:** `--data-root /path/to/data` (else falls back to the env vars).
+
+Precedence for the raw dir: `paths.data_root` / `--data-root` → `$SYNAPSE_DATA_ROOT`
+→ `$SYNAPSE_DATA_BASE/data` → `<repo>/data`. Assets (`assets/` montage + event
+map) and the sibling `../synapse` code stay repo-relative and are **not** relocated.
+
 ## Running the quality analysis
 
 ```bash

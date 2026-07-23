@@ -239,12 +239,15 @@ def main():
                     help="robust = filter-first (default); legacy = original unfiltered metric")
     ap.add_argument("--only", default="", help="comma list of PIDs to restrict to")
     ap.add_argument("--date", default="", help="label the run date in the Legend")
+    ap.add_argument("--data-root", default=None,
+                    help="raw recordings dir (default: $SYNAPSE_DATA_ROOT / "
+                         "$SYNAPSE_DATA_BASE/data / <repo>/data)")
     args = ap.parse_args()
 
     os.makedirs(REPORT_DIR, exist_ok=True)
     only = {s.strip() for s in args.only.split(",") if s.strip()}
 
-    participants = inventory.discover()
+    participants = inventory.discover(data_root=args.data_root)
     if only:
         participants = [p for p in participants if p.pid in only]
 

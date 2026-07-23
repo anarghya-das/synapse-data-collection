@@ -74,14 +74,14 @@ def _import_utils(synapse_repo, montage_abs):
     return utils
 
 
-def _resolve_cohort(cfg):
+def _resolve_cohort(cfg, data_root=None):
     """Yield ``(group, pid, Participant|None)`` for the requested cohort.
 
     Non-empty list => those IDs. Empty list => auto-discover only when
     ``cohort.name`` is ``all`` (see ``conf/cohort/all.yaml``); otherwise
     empty means none for that group (so CLI ``cohort.exp=[] cohort.ctrl=[CTRL10]``
     runs a single control without pulling in every experimental)."""
-    parts = {p.pid: p for p in inventory.discover()}
+    parts = {p.pid: p for p in inventory.discover(data_root=data_root)}
 
     def _ids(configured, prefix):
         items = list(configured)
@@ -150,13 +150,18 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
 
 @hydra.main(version_base=None, config_path="../conf", config_name="pair_video")
 def main(cfg: DictConfig) -> None:
+    # Base for the relocatable data/outputs trees (assets stay repo-relative).
+    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
+    data_root = (cfg.paths.get("data_root") or os.environ.get("SYNAPSE_DATA_ROOT")
+                 or os.path.join(base, "data"))
+
     montage_abs = os.path.join(REPO, cfg.paths.montage)
     _import_utils(cfg.paths.synapse_repo, montage_abs)
     from synapse_qc import av_align  # imported after ../synapse is on sys.path
 
     pre = cfg.preprocessing
     vid = cfg.video
-    out_root = os.path.join(REPO, cfg.paths.paired_dir)
+    out_root = os.path.join(base, cfg.paths.paired_dir)
     os.makedirs(out_root, exist_ok=True)
 
     # Pairing is detect-and-defer: it applies stream/bandpass/notch/quality
@@ -185,11 +190,11 @@ def main(cfg: DictConfig) -> None:
     print(f"  EEG: stream={pre.eeg_stream_name}  bp={eeg_kw['bandpass']}  "
           f"notch={pre.notch_freq}  quality={pre.quality.preset}  "
           f"(detect-only; channel_strategy + rejection deferred to finalize)")
-    print(f"  -> {os.path.relpath(out_root, REPO)}")
+    print(f"  -> {os.path.relpath(out_root, base)}")
     print("=" * 70)
 
     rows = []
-    for grp, pid, p in _resolve_cohort(cfg):
+    for grp, pid, p in _resolve_cohort(cfg, data_root):
         row = {"group": grp, "subject_id": pid, "mode": vid.mode}
         if p is None or not p.xdf_path:
             print(f"[skip] {pid}: no resolvable XDF")
