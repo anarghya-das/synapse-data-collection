@@ -1,0 +1,46 @@
+============================================================
+CEEGrid EEG Quality Report
+============================================================
+
+Overall Quality Score: 0.0/100
+Preset Used: default
+
+Time Window Analyzed:
+  - Start: 0.0s
+  - End: 1387.3s
+  - Duration: 1387.3s of 1387.3s total
+
+Bad Channels Summary:
+  - Total bad: 16/16
+  - Flat: ['L01', 'L02', 'L04', 'L05', 'L08', 'L09', 'L10', 'R01', 'R02', 'R04', 'R05', 'R07', 'R08', 'R09', 'R10']
+  - Low variance (dead): []
+  - Noisy (high-variance outlier): ['L07']
+  - Low correlation: ['L07', 'R07']
+  - High correlation (possible bridging; not scored): ['L01', 'L02', 'L04', 'L05', 'L08', 'L09', 'L10', 'R01', 'R02', 'R04', 'R05', 'R08', 'R09', 'R10']
+
+Thresholds Used:
+  - Flat voltage: 0.50 uV
+  - Correlation bounds: (0.4, 0.999)
+  - Dead-channel SD floor: 0.3 uV (on 1.0 Hz high-passed copy)
+
+Per-Channel Metrics:
+  L01: BAD | var=2.60e-07 | sd=510.287uV | corr=0.825 | snr=163963232126.4
+  L02: BAD | var=9.37e-08 | sd=306.048uV | corr=0.820 | snr=100072243239.7
+  L04: BAD | var=1.59e-07 | sd=398.634uV | corr=0.822 | snr=128685222169.7
+  L05: BAD | var=6.96e-07 | sd=834.061uV | corr=0.835 | snr=267223856196.0
+  L07: BAD | var=1.79e-05 | sd=4227.915uV | corr=0.291 | snr=758.1
+  L08: BAD | var=3.13e-07 | sd=559.663uV | corr=0.829 | snr=180783665710.8
+  L09: BAD | var=4.15e-07 | sd=644.351uV | corr=0.838 | snr=211266229467.5
+  L10: BAD | var=7.39e-07 | sd=859.684uV | corr=0.834 | snr=274490456015.3
+  R01: BAD | var=1.34e-07 | sd=365.385uV | corr=0.820 | snr=121955116475.5
+  R02: BAD | var=1.87e-07 | sd=431.938uV | corr=0.823 | snr=143469836742.6
+  R04: BAD | var=1.47e-07 | sd=383.120uV | corr=0.834 | snr=128820626631.5
+  R05: BAD | var=2.71e-07 | sd=520.762uV | corr=0.836 | snr=173263504143.9
+  R07: BAD | var=2.12e-09 | sd=46.001uV | corr=0.064 | snr=3251111750.1
+  R08: BAD | var=8.02e-07 | sd=895.552uV | corr=0.829 | snr=290524750383.3
+  R09: BAD | var=2.73e-07 | sd=522.201uV | corr=0.832 | snr=173353729812.3
+  R10: BAD | var=2.10e-07 | sd=458.134uV | corr=0.833 | snr=152895249355.3
+
+Ear Asymmetry Index: 0.821
+  (0 = symmetric, 1 = completely asymmetric)
+============================================================

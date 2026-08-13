@@ -1,0 +1,7 @@
+# Variant: DROP bad channels (15- ch epochs when 1 bad, etc.). Contrast with the
+# published 'interpolate' mirror. Note: variable channel count across subjects.
+defaults:
+  - published
+  - _self_
+name: drop
+channel_strategy: drop

@@ -1,0 +1,46 @@
+============================================================
+CEEGrid EEG Quality Report
+============================================================
+
+Overall Quality Score: 87.5/100
+Preset Used: default
+
+Time Window Analyzed:
+  - Start: 0.0s
+  - End: 1280.5s
+  - Duration: 1280.5s of 1280.5s total
+
+Bad Channels Summary:
+  - Total bad: 2/16
+  - Flat: ['R02', 'R07']
+  - Low variance (dead): ['R02', 'R07']
+  - Noisy (high-variance outlier): []
+  - Low correlation: []
+  - High correlation (possible bridging; not scored): ['R02', 'R07']
+
+Thresholds Used:
+  - Flat voltage: 0.50 uV
+  - Correlation bounds: (0.4, 0.999)
+  - Dead-channel SD floor: 0.3 uV (on 1.0 Hz high-passed copy)
+
+Per-Channel Metrics:
+  L01: OK  | var=5.40e-11 | sd= 7.346uV | corr=0.393 | snr=25.8
+  L02: OK  | var=4.63e-11 | sd= 6.802uV | corr=0.389 | snr=24.8
+  L04: OK  | var=2.99e-11 | sd= 5.464uV | corr=0.475 | snr=27.5
+  L05: OK  | var=2.77e-11 | sd= 5.268uV | corr=0.487 | snr=27.9
+  L07: OK  | var=3.02e-11 | sd= 5.492uV | corr=0.484 | snr=25.6
+  L08: OK  | var=5.26e-11 | sd= 7.250uV | corr=0.415 | snr=32.1
+  L09: OK  | var=3.12e-11 | sd= 5.588uV | corr=0.478 | snr=26.7
+  L10: OK  | var=4.60e-11 | sd= 6.785uV | corr=0.395 | snr=37.2
+  R01: OK  | var=8.85e-11 | sd= 9.408uV | corr=0.425 | snr=40.6
+  R02: BAD | var=1.10e-34 | sd= 0.000uV | corr=0.131 | snr=0.0
+  R04: OK  | var=8.09e-11 | sd= 8.996uV | corr=0.417 | snr=34.7
+  R05: OK  | var=5.93e-11 | sd= 7.704uV | corr=0.504 | snr=22.2
+  R07: BAD | var=1.10e-34 | sd= 0.000uV | corr=0.131 | snr=0.0
+  R08: OK  | var=5.44e-11 | sd= 7.377uV | corr=0.506 | snr=22.1
+  R09: OK  | var=5.92e-11 | sd= 7.692uV | corr=0.495 | snr=22.6
+  R10: OK  | var=8.58e-11 | sd= 9.262uV | corr=0.436 | snr=24.1
+
+Ear Asymmetry Index: 0.146
+  (0 = symmetric, 1 = completely asymmetric)
+============================================================

@@ -1,0 +1,45 @@
+# =============================================================================
+# SYNAPSE finalize configuration (Hydra)
+# =============================================================================
+# Turn the detect-and-defer paired dataset (outputs/paired, from pair_video) into
+# a training-ready dataset: apply the channel strategy + epoch rejection that
+# pairing deliberately left out, emit a per-channel validity mask, and filter the
+# video<->EEG pairing to the surviving epochs.
+#
+#   python -m pipelines.finalize_dataset                              # published: interpolate + z=3
+#   python -m pipelines.finalize_dataset preprocessing=zero_mask      # mask bad channels instead
+#   python -m pipelines.finalize_dataset preprocessing=drop           # drop bad channels
+#   python -m pipelines.finalize_dataset preprocessing=keep_all       # keep raw bad channels + mask
+#   python -m pipelines.finalize_dataset preprocessing.epoch_rejection.enabled=false
+#
+# channel_strategy + epoch_rejection come from the SAME `preprocessing` group that
+# build_dataset / pair_video use, so the finalized variant stays in lock-step.
+# =============================================================================
+
+defaults:
+  - preprocessing: published   # channel_strategy + epoch_rejection variant
+  - _self_
+
+hydra:
+  run:
+    dir: outputs/runs/${hydra.job.name}
+  sweep:
+    dir: outputs/runs/${hydra.job.name}
+    subdir: ${hydra.job.num}
+  output_subdir: null
+  job:
+    chdir: false
+
+# Output goes to outputs/dataset/<name>/ so different channel strategies live
+# side by side (interpolate vs zero_mask vs drop) without re-running pair_video.
+name: ${preprocessing.name}
+
+paths:
+  # Base dir holding the `outputs/` trees. null => the repo root. Point it at the
+  # relocated copy (server / SSHFS mount) to read/write there:
+  #   python -m pipelines.finalize_dataset paths.root=/data1/anarghya/synapse-data
+  # Also honored via $SYNAPSE_DATA_BASE.
+  root: null
+  montage: assets/ceegrid_montage_head.npz   # for channel_strategy=interpolate
+  paired_dir: outputs/paired                 # input: detect-and-defer paired data
+  dataset_dir: outputs/dataset               # output root (per-variant subdir)

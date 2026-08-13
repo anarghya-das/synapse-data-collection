@@ -1,0 +1,27 @@
+# Video-pairing options. The EEG knobs (stream, bandpass, notch, channel_strategy,
+# quality, epoch_rejection) live in the `preprocessing` group, NOT here -- so the
+# multimodal EEG matches the processed-pkl builds exactly.
+name: default
+
+mode: epoch            # epoch: one stim-locked clip + one EEG epoch per trial,
+                       #        windowed to tasks.timings, with a per-frame
+                       #        *_frames.csv sidecar for multimodal alignment.
+                       # marker: legacy marker-to-marker segments + a filtered Raw.fif.
+
+sfreq: 125             # EEG sample rate; builds the alignment time grid that the
+                       # model-side resamplers (av_align.resample_frames_to_eeg)
+                       # map video frames onto. Match the recording (OpenBCI = 125).
+
+fps: null              # override the video's FPS *tag* (null = read from the file).
+                       # Clip TIMING always comes from per-frame LSL stamps in the
+                       # *_frames.csv sidecar, never this fps -- the webcam rate is
+                       # sub-nominal and dejittered. fps only tags the container.
+
+exclude_phases: [response]   # (marker mode only) marker phases to drop. The post-
+                             # stim score-entry window in HLT/LET is not a stimulus
+                             # epoch. Pass [] to keep every phase.
+
+bindings: ${tasks.order}     # task prefixes used to build the marker category map.
+
+no_eeg: false          # skip the EEG side (write only video clips).
+no_video: false        # skip the video side (write only the EEG epochs/Raw).

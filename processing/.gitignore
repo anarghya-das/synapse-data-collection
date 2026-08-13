@@ -1,0 +1,21 @@
+# Raw recordings — large, not version-controlled here
+data/
+
+# Generated build artifacts
+# ~450 MB each; regenerate with pipelines/build_dataset.py
+outputs/processed/*.pkl
+# video clips + per-trial EEG epochs; regenerate with pipelines/pair_video.py
+outputs/paired/
+# finalized training-ready variants (channel strategy applied); pipelines/finalize_dataset.py
+outputs/dataset/
+# handover bundles (multi-GB self-contained zips)
+outputs/handover/
+# Hydra per-run logs/metadata
+outputs/runs/
+# (outputs/quality/* — QC excel + reports + spotcheck are kept, they're small & useful)
+
+# Python / OS
+__pycache__/
+*.pyc
+.DS_Store
+*.log

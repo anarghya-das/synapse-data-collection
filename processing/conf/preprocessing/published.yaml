@@ -1,0 +1,24 @@
+# Faithful mirror of the canonical synapse_preprocessed.pkl.
+# VERIFIED against the pkl itself: epochs keep all 16 channels and bad channels
+# carry real interpolated signal (e.g. the dead R07 -> ~15uV, bads cleared), so
+# the published canonical run used channel_strategy=INTERPOLATE (not drop; its
+# stored config has no channel_strategy key, confirming it predates that option).
+name: published
+
+eeg_stream_name: obci_eeg1
+channel_strategy: interpolate   # drop | interpolate | zero_mask | keep_all
+
+bandpass: {low: 1, high: 50}
+notch_freq: 60
+re_reference: null              # published used no re-reference
+
+quality:
+  preset: default               # CEEGrid 'default' preset (flat 0.5uV/30%, corr 0.15-0.85)
+  flat_voltage: 0.5
+
+epoch_rejection:
+  enabled: true
+  method: zscore                # reject epochs with max-channel PTP > mean + z*SD
+  z_threshold: 3
+  min_epochs: 5                 # exclude a task if fewer epochs survive
+  max_reject_pct: 50            # exclude a task if >50% of epochs rejected

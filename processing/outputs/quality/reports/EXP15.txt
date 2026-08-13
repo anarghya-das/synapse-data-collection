@@ -1,0 +1,46 @@
+============================================================
+CEEGrid EEG Quality Report
+============================================================
+
+Overall Quality Score: 62.5/100
+Preset Used: default
+
+Time Window Analyzed:
+  - Start: 0.0s
+  - End: 1437.6s
+  - Duration: 1437.6s of 1437.6s total
+
+Bad Channels Summary:
+  - Total bad: 6/16
+  - Flat: ['R01', 'R02', 'R10']
+  - Low variance (dead): ['R01', 'R02', 'R10']
+  - Noisy (high-variance outlier): ['R05', 'R08', 'R09']
+  - Low correlation: ['R10']
+  - High correlation (possible bridging; not scored): ['L01', 'L02', 'L04', 'L05', 'L07', 'L08', 'L09', 'L10', 'R01', 'R02', 'R05', 'R08', 'R09']
+
+Thresholds Used:
+  - Flat voltage: 0.50 uV
+  - Correlation bounds: (0.4, 0.999)
+  - Dead-channel SD floor: 0.3 uV (on 1.0 Hz high-passed copy)
+
+Per-Channel Metrics:
+  L01: OK  | var=4.17e-08 | sd=204.100uV | corr=0.789 | snr=86.9
+  L02: OK  | var=4.16e-08 | sd=203.990uV | corr=0.790 | snr=87.1
+  L04: OK  | var=4.15e-08 | sd=203.783uV | corr=0.790 | snr=87.2
+  L05: OK  | var=4.14e-08 | sd=203.553uV | corr=0.790 | snr=87.3
+  L07: OK  | var=4.16e-08 | sd=203.844uV | corr=0.790 | snr=87.1
+  L08: OK  | var=4.17e-08 | sd=204.134uV | corr=0.790 | snr=87.1
+  L09: OK  | var=4.11e-08 | sd=202.679uV | corr=0.790 | snr=87.1
+  L10: OK  | var=4.09e-08 | sd=202.335uV | corr=0.790 | snr=87.0
+  R01: BAD | var=1.08e-34 | sd= 0.000uV | corr=0.094 | snr=0.0
+  R02: BAD | var=1.08e-34 | sd= 0.000uV | corr=0.094 | snr=0.0
+  R04: OK  | var=4.14e-08 | sd=203.363uV | corr=0.751 | snr=124.3
+  R05: BAD | var=4.65e-08 | sd=215.635uV | corr=0.784 | snr=86.2
+  R07: OK  | var=7.67e-09 | sd=87.575uV | corr=0.661 | snr=155.4
+  R08: BAD | var=4.64e-08 | sd=215.496uV | corr=0.784 | snr=86.4
+  R09: BAD | var=4.64e-08 | sd=215.442uV | corr=0.784 | snr=86.4
+  R10: BAD | var=1.30e-34 | sd= 0.000uV | corr=-0.007 | snr=0.0
+
+Ear Asymmetry Index: 0.275
+  (0 = symmetric, 1 = completely asymmetric)
+============================================================
