@@ -2,6 +2,8 @@
 
 PsychoPy experiment and configuration for collecting synchronized EEG, audio, and behavioral data during four auditory tasks. Uses Lab Streaming Layer (LSL) for time-aligned multi-modal recording.
 
+The offline QC and dataset-building pipelines for the recorded data live in [`processing/`](processing/README.md) (formerly the standalone `synapse-data` repo, merged in with history preserved). The raw recordings themselves live on the lab server — see that README's "Data location" section.
+
 ## Pre-Requisites
 
 - Set up the recording environment by following [this guide](https://docs.google.com/document/d/1NA2v7Z6gLFAqDksrsyBf3V2RNZ6RxAdAVVEvcNDk-yA/edit?usp=sharing)
@@ -123,6 +125,8 @@ sounds/                       Raw source library (not read by the experiment dir
 notebooks/                    Analysis notebooks (processing, quality, neurable, montage)
 montage/                      cEEGrid electrode coordinates and montage builder
 exp_data/                     XDF recordings and processed response CSVs
+processing/                   Offline QC + dataset pipelines (former synapse-data repo;
+                              own README, CLAUDE.md, requirements, Hydra conf)
 data/                         Raw PsychoPy trial logs (gitignored)
 bids_dataset/                 BIDS-formatted EEG exports
 usb-camera/                   Standalone video + PPG recording scripts

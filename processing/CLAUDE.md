@@ -1,8 +1,13 @@
-# SYNAPSE data repo — notes for Claude
+# SYNAPSE processing — notes for Claude
 
-This repo holds raw SYNAPSE CEEGrid ear-EEG recordings + quality tooling. The
-analysis/paper code is the sibling repo `../synapse` (see its CLAUDE.md). Use the
-`brain` conda env (`/Users/anarghya/miniconda3/envs/brain/bin/python`).
+This directory (formerly the standalone `synapse-data` repo, merged into the
+collection repo via git subtree) holds the quality tooling + dataset pipelines
+for the SYNAPSE CEEGrid ear-EEG recordings. The analysis/paper code is the
+separate `synapse` repo (a sibling of the PARENT repo root, i.e. `../../synapse`
+from here; the pipelines reach it via the absolute `paths.synapse_repo` in
+`conf/config.yaml`, so cwd never matters — see its CLAUDE.md). Run everything
+from inside this directory with the `brain` conda env
+(`/Users/anarghya/miniconda3/envs/brain/bin/python`).
 
 These are the things that are NOT obvious from reading the code:
 
@@ -11,7 +16,7 @@ Most XDFs contain **two** OpenBCI streams. `obci_eeg1` is RAW; `obci_eeg2` is th
 OpenBCI GUI's FILTERED stream (empirically ~5–50 Hz band-pass + 60 Hz notch,
 recovered from the PSD ratio — the GUI config was never written down). QC must run
 on the RAW stream because the preset's correlation bounds (0.15–0.85) are
-calibrated for raw ear-EEG's shared DC drift; that is also what `../synapse`'s
+calibrated for raw ear-EEG's shared DC drift; that is also what `../../synapse`'s
 `parse_xdf` uses. `obci_eeg2` is scored only as a cross-check (`score_filtered`) —
 running the raw-tuned presets on filtered data over-flags it. Which stream is
 "good" flips per participant, so never auto-pick best-of-two as the headline.
@@ -49,11 +54,11 @@ have no EEG stream at all. Add new layout exceptions there, in one place.
 
 ## qc_core.py is vendored, not original
 It is a faithful copy of the QC functions in
-`../synapse/preprocessing/utils.py`. If the upstream QC algorithm changes,
+`../../synapse/preprocessing/utils.py`. If the upstream QC algorithm changes,
 re-sync this file; the canonical implementation lives in the analysis repo.
 
 ## The prior hand ratings are intentionally NOT in this repo
-`../synapse/participant_info.tsv` has manual Excellent/Good/Average/Bad ratings.
+`../../synapse/participant_info.tsv` has manual Excellent/Good/Average/Bad ratings.
 They were deliberately left there (not copied in) so the first QC pass is
 independent. `synapse_qc/manual.py` can load them for a later comparison step.
 
@@ -66,7 +71,7 @@ honors `$SYNAPSE_DATA_ROOT` / `$SYNAPSE_DATA_BASE`, and the Hydra pipelines take
 also reading those env vars, defaulting to the repo root so old behaviour is
 unchanged when nothing is set. Precedence + examples are in the README "Data
 location" section. WHY split base vs data_root: outputs and raw data can sit in
-different places. WHY assets stay repo-relative: montage/event-map/`../synapse`
+different places. WHY assets stay repo-relative: montage/event-map/`../../synapse`
 are code+config, not data — they were deliberately NOT relocated, so only `data/`
 and the `outputs/*` trees follow the base. To actually run the pipelines you must
 either mount the server path (SSHFS) or run on the server; assets still resolve
@@ -84,7 +89,7 @@ from the repo checkout.
 ## Dataset pipelines (built)
 - `pipelines/build_dataset.py` (Hydra: `conf/cohort/` × `conf/preprocessing/`) builds
   processed variants; `pipelines/compare.py` diffs against the published pkl. It REUSES
-  `../synapse` preprocessing code (faithful mirror). See README "Processed-data variants".
+  `../../synapse` preprocessing code (faithful mirror). See README "Processed-data variants".
   `inventory.discover()` is the shared ID→file layer.
 
 ## The multimodal (video+EEG) pipeline is two stages — detect-and-defer

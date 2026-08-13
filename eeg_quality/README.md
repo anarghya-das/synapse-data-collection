@@ -40,10 +40,13 @@ python eeg_quality/eeg_watchdog.py --no-gui       # terminal status line
 
 ## `qc_core.py`
 
-The robust CEEGrid QC engine, **vendored verbatim** from
-`synapse-data/synapse_qc/qc_core.py` so the watchdog scores signal quality with
-the exact same algorithm as the analysis pipeline. Re-copy it if the upstream QC
-changes; do not edit it here.
+A thin re-export of the robust CEEGrid QC engine, whose canonical
+implementation lives in `processing/synapse_qc/qc_core.py` in this repo. The
+watchdog therefore scores signal quality with the exact same algorithm as the
+processing pipelines, with nothing to re-sync. (It used to be a vendored copy
+back when the processing code was a separate repo.) It loads the file by path
+rather than importing the `synapse_qc` package, because the package
+`__init__` pulls in pandas-needing modules this env doesn't have.
 
 ## `mock_eeg_stream.py`
 
@@ -57,6 +60,6 @@ python eeg_quality/mock_eeg_stream.py good --selftest   # streams + scores, prin
 
 ## Scope
 
-Offline / post-hoc QC of recorded files lives in the **synapse-data** analysis
-repo (where `qc_core` is the source of truth), not here. This folder is only the
-*collection-time* safety net.
+Offline / post-hoc QC of recorded files lives in `processing/` (where
+`synapse_qc/qc_core.py` is the source of truth), not here. This folder is only
+the *collection-time* safety net.

@@ -1,6 +1,6 @@
 """Pair per-trial webcam clips with stim-locked EEG epochs (multimodal dataset).
 
-Ports ``../synapse/split_video.py`` into this repo's conventions:
+Ports ``../../synapse/split_video.py`` into this repo's conventions:
   * file resolution via ``synapse_qc.inventory`` (the XDF *and* the per-participant
     ``.avi``), not ``build_combined_mapping`` / next-to-XDF guessing;
   * EEG parameters come from the Hydra ``preprocessing`` group -- the SAME configs
@@ -12,7 +12,7 @@ Ports ``../synapse/split_video.py`` into this repo's conventions:
     + a top-level ``dataset_manifest.csv``).
 
 The published EEG alignment helpers (``create_mne`` and the marker/event
-machinery) are reused live from ``../synapse`` exactly like ``build_dataset``,
+machinery) are reused live from ``../../synapse`` exactly like ``build_dataset``,
 with the absolute montage path injected into ``create_mne`` so it does not depend
 on the current working directory.
 
@@ -157,7 +157,7 @@ def main(cfg: DictConfig) -> None:
 
     montage_abs = os.path.join(REPO, cfg.paths.montage)
     _import_utils(cfg.paths.synapse_repo, montage_abs)
-    from synapse_qc import av_align  # imported after ../synapse is on sys.path
+    from synapse_qc import av_align  # imported after ../../synapse is on sys.path
 
     pre = cfg.preprocessing
     vid = cfg.video

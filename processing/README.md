@@ -1,13 +1,16 @@
 # SYNAPSE — Data & Quality Analysis
 
-Raw data and quality analysis for the SYNAPSE CEEGrid ear-EEG hyperacusis study.
-The analysis/paper code lives separately in `../synapse`; this repo holds the
-participant recordings and the tooling that reads and quality-checks them.
+Quality analysis and dataset-building pipelines for the SYNAPSE CEEGrid ear-EEG
+hyperacusis study. This is the `processing/` half of the data-collection repo
+(formerly the standalone `synapse-data` repo, merged in with history preserved);
+the PsychoPy experiment lives at the repo root, and the analysis/paper code
+lives separately in `../../synapse`. Run everything from inside this directory
+(`cd processing`).
 
 ## Data location (relocatable)
 
-By default the raw `data/` and generated `outputs/` trees live under the repo
-root. They can be moved elsewhere (e.g. the lab server
+By default the raw `data/` and generated `outputs/` trees live under this
+directory. They can be moved elsewhere (e.g. the lab server
 `ub-polar:/data1/anarghya/synapse-data`, or an SSHFS mount of it) without
 editing code — point the tooling at the base dir. The published copy of `data/`
 + `outputs/` lives at `/data1/anarghya/synapse-data`.
@@ -28,7 +31,7 @@ editing code — point the tooling at the base dir. The published copy of `data/
 
 Precedence for the raw dir: `paths.data_root` / `--data-root` → `$SYNAPSE_DATA_ROOT`
 → `$SYNAPSE_DATA_BASE/data` → `<repo>/data`. Assets (`assets/` montage + event
-map) and the sibling `../synapse` code stay repo-relative and are **not** relocated.
+map) and the sibling `../../synapse` code stay repo-relative and are **not** relocated.
 
 ## Running the quality analysis
 
@@ -70,14 +73,14 @@ legacy, 81 under robust).
 
 | Definition | EXP | CTRL | Total |
 |---|---|---|---|
-| **Published cohort** (legacy QC, as-shipped in `../synapse`) | 18 | 10 | 28 |
+| **Published cohort** (legacy QC, as-shipped in `../../synapse`) | 18 | 10 | 28 |
 | **Corrected, lenient bar** (robust QC, ≥4 good channels = the study's own rule) | **24** | **12** | **36** |
 | Corrected, quality bar (robust QC, score ≥ 60 = ≥10 good channels) | 22 | 8–9 | 30–31 |
 
 **Recommended cohort: 24 EXP / 12 CTRL** (robust QC at the study's own inclusion bar).
 
 The published set is **18 EXP + 10 CTRL** (authoritative list in
-`../synapse/processed_data/synapse_preprocessed.pkl`, keys `exp_subjects` /
+`../../synapse/processed_data/synapse_preprocessed.pkl`, keys `exp_subjects` /
 `ctrl_subjects`). Its rule was the **legacy QC + "reject only if ≥12/16 channels bad"** —
 `run_quality.py --method legacy` reproduces those 10 controls exactly. Differences under
 the corrected metric:
@@ -100,7 +103,7 @@ the corrected metric:
 
 `pipelines/build_dataset.py` builds processed `Epochs` datasets as **cohort × preprocessing**
 variants, using Hydra config groups. It reuses the *published* preprocessing code from
-`../synapse` (event mapping → `create_mne` → per-task epochs → z-score PTP epoch rejection),
+`../../synapse` (event mapping → `create_mne` → per-task epochs → z-score PTP epoch rejection),
 so a `preprocessing=published` build faithfully mirrors `synapse_preprocessed.pkl`.
 
 ```bash
@@ -113,19 +116,19 @@ python -m pipelines.build_dataset cohort.exp='[EXP01,EXP13]' cohort.ctrl='[CTRL1
 - `conf/preprocessing/` — variants for comparing channel handling: **`drop` / `interpolate` / `zero_mask` / `keep_all`** (the published mirror uses **`interpolate`** — verified against the pkl).
 - Output: `outputs/processed/<variant>.pkl` (+ `<variant>.manifest.json` with cohort, params, file resolution, epoch counts, channel masks — the provenance record). **`outputs/processed/` files are large (~450 MB each)** — treat as build artifacts.
 
-**Pkl schema** — the built pkl mirrors the **current `../synapse` `save_preprocessed` schema** so it is a **drop-in for the current analysis scripts** (`python -m publication_analysis input=outputs/processed/<variant>.pkl …`). The 16 top-level keys: `exp_epochs, ctrl_epochs, exp_subjects, ctrl_subjects, exp_quality, ctrl_quality, clinical_data, clinical_scores, demographics, responses, quality_report, channel_strategy, epoch_rejection_enabled, channel_masks, preprocessing_date, config`. Clinical/behavioural/report keys are built with the published builders (`load_clinical_data` / `extract_clinical_scores` / `extract_demographics` / `load_responses` / `generate_quality_report`) from `02_PC Data.xlsx` + the per-subject `*_responses.csv`. Provenance (`variant`, `cohort`) lives inside `config` and the `<variant>.manifest.json` sidecar. (This is a superset of the older `synapse_preprocessed.pkl`, which had only 11 of these keys — it predates `channel_masks`/`demographics`/`responses`/`channel_strategy`/`epoch_rejection_enabled`.) Nested notes: each `*_quality` dict is a superset of the published one (adds `ch_sd_uv`/`channel_mask`/`epoch_rejection` — harmless, only `quality_score` is read downstream); `clinical_scores` uses `HQ_Functional`/`HQ_Social` where the older pkl used `HQ_Fear`/`HQ_Sensitivity` (a relabel of the same two columns).
+**Pkl schema** — the built pkl mirrors the **current `../../synapse` `save_preprocessed` schema** so it is a **drop-in for the current analysis scripts** (`python -m publication_analysis input=outputs/processed/<variant>.pkl …`). The 16 top-level keys: `exp_epochs, ctrl_epochs, exp_subjects, ctrl_subjects, exp_quality, ctrl_quality, clinical_data, clinical_scores, demographics, responses, quality_report, channel_strategy, epoch_rejection_enabled, channel_masks, preprocessing_date, config`. Clinical/behavioural/report keys are built with the published builders (`load_clinical_data` / `extract_clinical_scores` / `extract_demographics` / `load_responses` / `generate_quality_report`) from `02_PC Data.xlsx` + the per-subject `*_responses.csv`. Provenance (`variant`, `cohort`) lives inside `config` and the `<variant>.manifest.json` sidecar. (This is a superset of the older `synapse_preprocessed.pkl`, which had only 11 of these keys — it predates `channel_masks`/`demographics`/`responses`/`channel_strategy`/`epoch_rejection_enabled`.) Nested notes: each `*_quality` dict is a superset of the published one (adds `ch_sd_uv`/`channel_mask`/`epoch_rejection` — harmless, only `quality_score` is read downstream); `clinical_scores` uses `HQ_Functional`/`HQ_Social` where the older pkl used `HQ_Fear`/`HQ_Sensitivity` (a relabel of the same two columns).
 
 ### Reproduction check vs the published pkl
 
 `python -m pipelines.compare --variant published` diffs a build against
-`../synapse/.../synapse_preprocessed.pkl` (aligning by `subject_id`; published order is
+`../../synapse/.../synapse_preprocessed.pkl` (aligning by `subject_id`; published order is
 processing order, not sorted). Current result for the `published` mirror:
 
 - **Cohort identical** (18 EXP / 10 CTRL).
 - **24/28 subjects:** same bad channels and **bit-identical epoch data on every matched
   stimulus** — only the z-score rejection kept 1–2 fewer epochs/task (it's sensitive to
   tiny numerical differences). The signal pipeline reproduces exactly.
-- **3/28 subjects** (EXP07, EXP13, CTRL10) differ in **channel QC**: the current `../synapse`
+- **3/28 subjects** (EXP07, EXP13, CTRL10) differ in **channel QC**: the current `../../synapse`
   `quality_check` flags slightly different bad channels than when the pkl was built (Jan 2026),
   changing interpolation on one channel (a few µV RMS).
 
@@ -194,7 +197,7 @@ python -m pipelines.finalize_dataset preprocessing.epoch_rejection.enabled=false
 
 Most recordings contain **two** OpenBCI LSL streams:
 
-- `obci_eeg1` — **RAW** (carries the electrode DC offset; always present). **Canonical QC input**, matching `../synapse`'s `parse_xdf`.
+- `obci_eeg1` — **RAW** (carries the electrode DC offset; always present). **Canonical QC input**, matching `../../synapse`'s `parse_xdf`.
 - `obci_eeg2` — **FILTERED** by the OpenBCI GUI: empirically a **~5–50 Hz band-pass + 60 Hz notch** (recovered from the stream spectra). Present in 37/47 recordings.
 
 Because the `robust` method band-passes internally, the QC of the raw stream and of

@@ -1,7 +1,7 @@
 """Align CEEGrid EEG with the webcam recording from one LSL XDF file.
 
 Library half of the video+EEG pairing pipeline (the Hydra entry point is
-``pipelines/pair_video.py``). Faithfully ported from ``../synapse/split_video.py``
+``pipelines/pair_video.py``). Faithfully ported from ``../../synapse/split_video.py``
 with the CLI / file-discovery removed: this repo resolves recordings through
 ``synapse_qc.inventory`` and drives parameters through Hydra, so everything here
 takes explicit arguments instead.
@@ -14,7 +14,7 @@ Two modes (see :func:`pair_recording`):
   * ``marker`` — legacy marker-to-marker segments (one clip per marker span) plus
     a single filtered ``Raw`` ``.fif``.
 
-EEG bad-channel handling is delegated to ``../synapse``'s ``create_mne`` via the
+EEG bad-channel handling is delegated to ``../../synapse``'s ``create_mne`` via the
 ``preprocessing.utils`` module (imported lazily so the analysis repo only needs
 to be on ``sys.path`` at call time, and so the caller's montage monkeypatch on
 ``utils.create_mne`` is honoured).

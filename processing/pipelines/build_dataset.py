@@ -1,6 +1,6 @@
 """Build a processed-data variant: cohort (participant IDs) x preprocessing.
 
-Reuses the PUBLISHED preprocessing code from ../synapse (process_subject /
+Reuses the PUBLISHED preprocessing code from ../../synapse (process_subject /
 process_group) so a `preprocessing=published` build faithfully mirrors how
 synapse_preprocessed.pkl was made -- the comparison step then isolates real
 differences rather than reimplementation bugs.
