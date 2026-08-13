@@ -114,9 +114,16 @@ def main(cfg: DictConfig) -> None:
     # channel_masks, clinical_scores, etc.). Schema mirrors run_preprocessing's
     # save_preprocessed dict exactly.
     clinical_measures = list(cfg.clinical.measures)
-    clinical_data = pp.load_clinical_data(cfg.paths.clinical_data, clinical_measures)
+    # Workbook choice is per-cohort: cohort.clinical_data (published pins the
+    # old ../../synapse copy for reproduction fidelity) falls back to
+    # paths.clinical_data (the newer local 02_PCData.xlsx). Relative paths
+    # resolve against the repo dir, not Hydra's run cwd.
+    clinical_path = cfg.cohort.get("clinical_data") or cfg.paths.clinical_data
+    if not os.path.isabs(clinical_path):
+        clinical_path = os.path.join(REPO, clinical_path)
+    clinical_data = pp.load_clinical_data(clinical_path, clinical_measures)
     if not clinical_data:
-        print(f"WARNING: clinical_data is EMPTY (could not read {cfg.paths.clinical_data}); "
+        print(f"WARNING: clinical_data is EMPTY (could not read {clinical_path}); "
               f"clinical_scores/demographics will be empty.")
     all_subjects = list(exp["subjects"]) + list(ctrl["subjects"])
     clinical_scores = {s: pp.extract_clinical_scores(clinical_data, s, clinical_measures)

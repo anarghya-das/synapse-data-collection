@@ -46,7 +46,13 @@ paths:
   synapse_repo: /Users/anarghya/Developer/research/synapse   # for the published preprocessing code
   global_event_map: assets/global_event_id_map.pkl
   montage: assets/ceegrid_montage_head.npz   # injected into create_mne (no CWD dependency)
-  clinical_data: /Users/anarghya/Developer/research/synapse/02_PC Data.xlsx  # for clinical_data/clinical_scores
+  # Clinical workbook for clinical_data/clinical_scores/demographics. Relative
+  # paths resolve against this directory. Default: the NEWER workbook (last
+  # updated 2026-07; includes EXP44-47 + CTRL26-28 and the Excluded Data /
+  # per-device Questionnaires sheets). cohort=published overrides this with the
+  # older ../../synapse copy the published pkl was built from (see
+  # conf/cohort/published.yaml) so the faithful mirror stays faithful.
+  clinical_data: 02_PCData.xlsx
   output_dir: outputs/processed
   # The original published pkl, for the comparison step:
   published_pkl: /Users/anarghya/Developer/research/synapse/processed_data/synapse_preprocessed.pkl

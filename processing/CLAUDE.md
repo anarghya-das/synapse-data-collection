@@ -86,6 +86,16 @@ from the repo checkout.
   around this by monkeypatching `utils.create_mne` to inject the absolute `assets/` path
   (so there is NO montage file required in CWD — don't re-add one).
 
+## Two clinical workbooks — the choice is per-cohort, on purpose
+`02_PCData.xlsx` (here, updated 2026-07 by the study coordinator) is the NEWER
+workbook: adds EXP44-47 + CTRL26-28, splits questionnaires per device, and moves
+excluded participants to their own sheet. `../../synapse/02_PC Data.xlsx`
+(2026-04) is the OLDER state the published pkl was built from. `build_dataset`
+resolves `cohort.clinical_data` first (set only in `conf/cohort/published.yaml`,
+pinning the old file so the published mirror reproduces exactly), then falls
+back to `paths.clinical_data` (the new local file). Don't "fix" the published
+cohort to use the new workbook — its whole point is bit-faithful reproduction.
+
 ## Dataset pipelines (built)
 - `pipelines/build_dataset.py` (Hydra: `conf/cohort/` × `conf/preprocessing/`) builds
   processed variants; `pipelines/compare.py` diffs against the published pkl. It REUSES
