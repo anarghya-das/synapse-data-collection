@@ -289,8 +289,15 @@ def _write_clinical(out_root, subjects, cfg):
         demo = pp.extract_demographics(data.get("demographics"),
                                        data.get("audio"), sid) or {}
         row = {"subject_id": sid,
-               "group": "EXP" if sid.startswith("EXP") else "CTRL",
-               **scores, **demo}
+               "group": "EXP" if sid.startswith("EXP") else "CTRL"}
+        # Flatten nested per-frequency dicts (pta_*/ldl_*: {Hz: dB}) into
+        # <field>_<Hz> columns so the CSV stays purely tabular.
+        for k, v in {**scores, **demo}.items():
+            if isinstance(v, dict):
+                for sk, sv in v.items():
+                    row[f"{k}_{sk}"] = sv
+            else:
+                row[k] = v
         for k in row:
             if k not in cols:
                 cols.append(k)
