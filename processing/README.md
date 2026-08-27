@@ -198,10 +198,11 @@ group** `build_dataset` uses, so finalized variants stay in lock-step. It emits 
 **validity mask** (`*_channel_mask.npy`, `1`=real / `0`=interpolated/masked/dropped +
 `*_channels.json`) and re-filters each `*_alignment.csv` to the surviving pairs — **video is
 never re-encoded**, clips are referenced in place under `outputs/multimodal/paired/`. It also
-joins the clinical workbook (`paths.clinical_data`, same published loaders `build_dataset`
-uses) into a per-variant `clinical.csv` — one row per finalized subject with the questionnaire
-scores (`clinical.measures`) + demographics, keyed by `subject_id`, so the multimodal dataset
-ships with its labels.
+joins the clinical workbook (`paths.clinical_data`) into a per-variant `clinical.csv` — one row
+per finalized subject with the questionnaire scores (`clinical.measures`), demographics, and
+audiometry, keyed by `subject_id`, so the multimodal dataset ships with its labels. The workbook
+is parsed directly by `synapse_qc/clinical.py` (column positions validated against the header
+labels), so this needs no `../../synapse` checkout.
 
 ```bash
 python -m pipelines.finalize_dataset                          # interpolate + z=3 (= old baked-in behaviour)

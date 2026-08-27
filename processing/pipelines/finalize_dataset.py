@@ -42,7 +42,7 @@ from omegaconf import OmegaConf, DictConfig
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from synapse_qc import paths as qpaths  # noqa: E402
+from synapse_qc import clinical as qclinical, paths as qpaths  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -259,50 +259,27 @@ def _load_paired_manifest(paired_root):
 
 
 def _write_clinical(out_root, subjects, cfg):
-    """Join per-subject clinical scores + demographics from the clinical workbook
-    into ``clinical.csv`` (one row per finalized subject, keyed by subject_id) so
-    the multimodal dataset ships with its labels. Uses the same published loaders
-    ``build_dataset`` uses; skipped with a warning if the analysis repo or the
-    workbook is unavailable (finalize itself still succeeds)."""
-    try:
-        synapse_repo = cfg.paths.synapse_repo
-        if synapse_repo not in sys.path:
-            sys.path.insert(0, synapse_repo)
-        from publication_analysis import preprocess as pp
-    except Exception as e:  # noqa: BLE001
-        print(f"[clinical] SKIPPED — cannot import published loaders "
-              f"from {cfg.paths.synapse_repo}: {e}")
-        return None
-
+    """Join per-subject clinical scores + demographics + audiometry from the PC
+    workbook into ``clinical.csv`` (one row per finalized subject, keyed by
+    subject_id) so the multimodal dataset ships with its labels. Parsed directly
+    from the workbook by ``synapse_qc.clinical`` (no analysis-repo dependency);
+    skipped with a warning if the workbook is unreadable (finalize itself still
+    succeeds)."""
     clinical_path = cfg.paths.clinical_data
     if not os.path.isabs(clinical_path):
         clinical_path = os.path.join(REPO, clinical_path)
     measures = list(cfg.clinical.measures)
-    data = pp.load_clinical_data(clinical_path, measures)
-    if not data:
-        print(f"[clinical] SKIPPED — could not read workbook {clinical_path}")
+    try:
+        out_rows = qclinical.load_clinical_rows(clinical_path, subjects, measures)
+    except Exception as e:  # noqa: BLE001
+        print(f"[clinical] SKIPPED — cannot read workbook {clinical_path}: {e}")
         return None
 
-    out_rows, cols = [], ["subject_id", "group"]
-    for sid in subjects:
-        scores = pp.extract_clinical_scores(data, sid, measures) or {}
-        demo = pp.extract_demographics(data.get("demographics"),
-                                       data.get("audio"), sid) or {}
-        row = {"subject_id": sid,
-               "group": "EXP" if sid.startswith("EXP") else "CTRL"}
-        # Flatten nested per-frequency dicts (pta_*/ldl_*: {Hz: dB}) into
-        # <field>_<Hz> columns so the CSV stays purely tabular.
-        for k, v in {**scores, **demo}.items():
-            if isinstance(v, dict):
-                for sk, sv in v.items():
-                    row[f"{k}_{sk}"] = sv
-            else:
-                row[k] = v
-        for k in row:
+    cols = []
+    for r in out_rows:
+        for k in r:
             if k not in cols:
                 cols.append(k)
-        out_rows.append(row)
-
     csv_path = os.path.join(out_root, "clinical.csv")
     with open(csv_path, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")

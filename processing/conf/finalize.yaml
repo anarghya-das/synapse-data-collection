@@ -48,10 +48,9 @@ paths:
   # ---- Input/output locations (resolve as <base>/<dir>). Change HERE, not in code.
   paired_dir: outputs/multimodal/paired      # input: detect-and-defer paired data
   dataset_dir: outputs/multimodal/final      # output root (per-variant subdir)
-  # Analysis repo (published clinical-workbook loaders); $SYNAPSE_REPO overrides.
-  synapse_repo: ${oc.env:SYNAPSE_REPO,/Users/anarghya/Developer/research/synapse}
   # Clinical workbook joined into each variant as clinical.csv (one row per
-  # finalized subject). Relative paths resolve against the repo dir.
+  # finalized subject), parsed directly by synapse_qc/clinical.py — no
+  # analysis-repo dependency. Relative paths resolve against the repo dir.
   clinical_data: 02_PCData.xlsx
 
 # Clinical questionnaire measures pulled per subject into clinical.csv
