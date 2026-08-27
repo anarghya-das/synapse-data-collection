@@ -2,10 +2,11 @@
 
 Walks ``data/``, resolves the canonical recording per participant (see
 ``synapse_qc.inventory``), runs the CEEGrid quality check on the full
-recording, and writes:
+recording, and writes (under ``paths.qc_dir`` from ``conf/config.yaml``,
+resolved against $SYNAPSE_DATA_BASE — see ``synapse_qc.paths``):
 
-  * ``quality/quality_results.xlsx``  - Summary + Per-Channel + Legend sheets
-  * ``quality/reports/<PID>.txt``     - per-participant text report
+  * ``outputs/qc/quality_results.xlsx``  - Summary + Per-Channel + Legend sheets
+  * ``outputs/qc/reports/<PID>.txt``     - per-participant text report
 
 This pass is fully independent of any prior hand rating; the comparison
 against ``participant_info.tsv`` is a separate later step.
@@ -27,14 +28,9 @@ import numpy as np
 
 # Make the package importable when run as a plain script from the repo root.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synapse_qc import qc_core, inventory, excel  # noqa: E402
+from synapse_qc import qc_core, inventory, excel, paths as qpaths  # noqa: E402
 
 warnings.filterwarnings("ignore")
-
-REPO = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR = os.path.join(REPO, "outputs", "quality")
-REPORT_DIR = os.path.join(OUT_DIR, "reports")
-XLSX_PATH = os.path.join(OUT_DIR, "quality_results.xlsx")
 
 
 DIVERGE = 12  # |score_raw - score_filtered| at/above this = materially diverging
@@ -244,7 +240,12 @@ def main():
                          "$SYNAPSE_DATA_BASE/data / <repo>/data)")
     args = ap.parse_args()
 
-    os.makedirs(REPORT_DIR, exist_ok=True)
+    # Output location comes from conf/config.yaml (paths.qc_dir) -- change it
+    # there, not here.
+    out_dir = qpaths.output_paths()["qc"]
+    report_dir = os.path.join(out_dir, "reports")
+    xlsx_path = os.path.join(out_dir, "quality_results.xlsx")
+    os.makedirs(report_dir, exist_ok=True)
     only = {s.strip() for s in args.only.split(",") if s.strip()}
 
     participants = inventory.discover(data_root=args.data_root)
@@ -260,7 +261,7 @@ def main():
         summary_rows.append(row)
         channel_rows.extend(ch_rows)
         if report:
-            with open(os.path.join(REPORT_DIR, f"{p.pid}.txt"), "w") as f:
+            with open(os.path.join(report_dir, f"{p.pid}.txt"), "w") as f:
                 f.write(report)
         score = row.get("quality_score")
         score_s = f"{score:.0f}" if isinstance(score, (int, float)) and not np.isnan(score) else "-"
@@ -276,15 +277,15 @@ def main():
         "n": len(summary_rows),
         "config": qc_core.CEEGRID_QUALITY_PRESETS.get(args.preset, {}),
     }
-    excel.write_workbook(summary_rows, channel_rows, XLSX_PATH, run_meta=run_meta)
+    excel.write_workbook(summary_rows, channel_rows, xlsx_path, run_meta=run_meta)
 
     n_ok = sum(1 for r in summary_rows if r["qc_status"] == "ok")
     n_no_eeg = sum(1 for r in summary_rows if r["qc_status"].startswith("no_eeg"))
     print("\n" + "=" * 72)
-    print(f"Wrote {XLSX_PATH}")
+    print(f"Wrote {xlsx_path}")
     print(f"  {len(summary_rows)} participants | {n_ok} with EEG analysed | "
           f"{n_no_eeg} no EEG stream")
-    print(f"  per-participant reports in {REPORT_DIR}/")
+    print(f"  per-participant reports in {report_dir}/")
 
 
 if __name__ == "__main__":

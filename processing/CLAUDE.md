@@ -29,7 +29,7 @@ raw and filtered streams converge (mean |Δ|≈4). **legacy** is the original me
 computes criteria on the UNFILTERED signal — kept only for comparison. The legacy
 correlation bound (high=0.85) flags common-mode DC drift as bad, scoring whole
 recordings 0 even when every channel is healthy (CTRL09: legacy 0, robust 81). The
-redesign rationale + citations (PREP, FASTER) are in `outputs/quality/QC_methodology_review.md`.
+redesign rationale + citations (PREP, FASTER) are in `docs/QC_methodology_review.md`.
 Use *max* inter-channel correlation, not mean: ear-EEG channels are weakly correlated
 with the contralateral ear, so a healthy channel's MEAN correlation is naturally low.
 
@@ -78,9 +78,19 @@ either mount the server path (SSHFS) or run on the server; assets still resolve
 from the repo checkout.
 
 ## Project layout / conventions
-- All generated artifacts go under `outputs/` (`quality/`, `processed/`, `runs/`); source/
-  config/data stay at the root. `outputs/processed/*.pkl` (~450 MB) and `outputs/runs/` are
-  gitignored. Don't write generated files to the repo root.
+- ALL generated artifacts go under `<base>/outputs/` in the data tree
+  (`$SYNAPSE_DATA_BASE`, e.g. `ub-polar:/data1/anarghya/synapse-data`) — the whole
+  `outputs/` dir is gitignored, nothing generated lives in the repo. Layout:
+  `qc/` (quality workbook + reports), `epochs/<cohort>__<preprocessing>/`
+  (processed pkls, ~450 MB each), `multimodal/paired/` (stage-1 intermediate),
+  `multimodal/final/<cohort>__<preprocessing>/` (training-ready variants),
+  `logs/` (Hydra). Every location is defined ONCE in the `paths:` section of the
+  relevant `conf/*.yaml` (`run_quality.py`/`spotcheck.py` read the same YAML via
+  `synapse_qc.paths`) — relocate outputs by editing config, never code. Variant
+  dirs are always `<cohort>__<preprocessing>` so both dimensions show in the
+  path; each carries a `manifest.json` with git SHA + resolved config. The
+  entry points warn loudly when `$SYNAPSE_DATA_BASE` is unset and they fall
+  back to writing under the repo. See `outputs/README.md` in the data tree.
 - `assets/` holds the canonical `ceegrid_montage_head.npz` + `global_event_id_map.pkl`.
   The published `create_mne` loads the montage by a RELATIVE path; `build_dataset.py` works
   around this by monkeypatching `utils.create_mne` to inject the absolute `assets/` path
@@ -106,18 +116,18 @@ cohort to use the new workbook — its whole point is bit-faithful reproduction.
 The DL dataset is built in two Hydra pipelines, deliberately split so the SLOW,
 one-time work (temporal EEG↔video alignment + video re-encoding) is separated from
 the FAST, swappable channel-handling experiments:
-- `pipelines/pair_video.py` → `outputs/paired/`. Filters, epochs, and pairs EVERY
+- `pipelines/pair_video.py` → `outputs/multimodal/paired/`. Filters, epochs, and pairs EVERY
   boundary-valid trial with ALL 16 channels intact. QC runs for DETECTION ONLY: bad
   channels are recorded (in each `_epo.fif`'s `info['bads']` + a per-subject
   `*_channels.tsv`/`*_qc.json` sidecar) but NOT interpolated/dropped/zeroed, and NO
   epoch rejection happens. So no subject is dropped here on channel quality — that
   decision is deferred. `preprocessing.channel_strategy`/`epoch_rejection` are IGNORED
   by epoch mode (they still apply to legacy `marker` mode).
-- `pipelines/finalize_dataset.py` (`conf/finalize.yaml`) → `outputs/dataset/<name>/`.
+- `pipelines/finalize_dataset.py` (`conf/finalize.yaml`) → `outputs/multimodal/final/<cohort>__<preprocessing>/`.
   Applies `channel_strategy` (interpolate|zero_mask|drop|keep_all) + PTP `epoch_rejection`
   from the `preprocessing` group, emits a per-channel validity mask (`*_channel_mask.npy`,
   1=real / 0=interpolated/masked/dropped), and re-filters the alignment CSV to surviving
-  pairs (video is never re-encoded — clips are referenced in place under `outputs/paired`).
+  pairs (video is never re-encoded — clips are referenced in place under `outputs/multimodal/paired`).
   Run it once per strategy to get interpolate/zero_mask/drop variants side by side.
 - WHY this matters: (1) rejection PTP is computed over GOOD channels only, so a noisy
   bad channel can't corrupt it — this only works because channel handling is decoupled;

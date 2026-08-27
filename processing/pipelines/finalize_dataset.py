@@ -15,7 +15,11 @@ This step is the fast, swappable half. For each subject it:
     survive or too many are rejected;
   * filters the paired ``*_alignment.csv`` to the surviving epochs, re-indexing
     ``eeg_epoch_index`` into the finalized ``_epo.fif`` and pointing ``video_clip``
-    at the existing clips under ``outputs/paired`` (video is never re-encoded).
+    at the existing clips under ``outputs/multimodal/paired`` (video is never
+    re-encoded);
+  * joins the clinical workbook into ``clinical.csv`` (one row per finalized
+    subject: questionnaire scores + demographics) so the dataset ships with its
+    labels.
 
 Because channel handling is decoupled from the expensive pairing, you can build
 ``interpolate`` / ``zero_mask`` / ``drop`` variants side by side from one pair run:
@@ -38,6 +42,7 @@ from omegaconf import OmegaConf, DictConfig
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
+from synapse_qc import paths as qpaths  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -244,11 +249,71 @@ def _finalize_subject(pid, paired_subj, out_subj, strategy, rej, montage_file, b
     }
 
 
-def _write_manifest(rows, out_root, cfg, strategy, rej):
+def _load_paired_manifest(paired_root):
+    """Provenance of the paired input (cohort, build date); {} if absent."""
+    path = os.path.join(paired_root, "manifest.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as fh:
+        return json.load(fh)
+
+
+def _write_clinical(out_root, subjects, cfg):
+    """Join per-subject clinical scores + demographics from the clinical workbook
+    into ``clinical.csv`` (one row per finalized subject, keyed by subject_id) so
+    the multimodal dataset ships with its labels. Uses the same published loaders
+    ``build_dataset`` uses; skipped with a warning if the analysis repo or the
+    workbook is unavailable (finalize itself still succeeds)."""
+    try:
+        synapse_repo = cfg.paths.synapse_repo
+        if synapse_repo not in sys.path:
+            sys.path.insert(0, synapse_repo)
+        from publication_analysis import preprocess as pp
+    except Exception as e:  # noqa: BLE001
+        print(f"[clinical] SKIPPED — cannot import published loaders "
+              f"from {cfg.paths.synapse_repo}: {e}")
+        return None
+
+    clinical_path = cfg.paths.clinical_data
+    if not os.path.isabs(clinical_path):
+        clinical_path = os.path.join(REPO, clinical_path)
+    measures = list(cfg.clinical.measures)
+    data = pp.load_clinical_data(clinical_path, measures)
+    if not data:
+        print(f"[clinical] SKIPPED — could not read workbook {clinical_path}")
+        return None
+
+    out_rows, cols = [], ["subject_id", "group"]
+    for sid in subjects:
+        scores = pp.extract_clinical_scores(data, sid, measures) or {}
+        demo = pp.extract_demographics(data.get("demographics"),
+                                       data.get("audio"), sid) or {}
+        row = {"subject_id": sid,
+               "group": "EXP" if sid.startswith("EXP") else "CTRL",
+               **scores, **demo}
+        for k in row:
+            if k not in cols:
+                cols.append(k)
+        out_rows.append(row)
+
+    csv_path = os.path.join(out_root, "clinical.csv")
+    with open(csv_path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(out_rows)
+    n_scored = sum(1 for r in out_rows if len(r) > 2)
+    print(f"[clinical] wrote clinical.csv ({n_scored}/{len(out_rows)} subjects "
+          f"with workbook entries, from {os.path.basename(clinical_path)})")
+    return {"csv": "clinical.csv", "workbook": clinical_path,
+            "measures": measures, "subjects_with_entries": n_scored}
+
+
+def _write_manifest(rows, out_root, cfg, strategy, rej, variant, paired_manifest,
+                    clinical):
     cols = ["subject_id", "status", "quality_score", "n_bad_detected",
             "n_real_channels", "n_channels", "paired_trials",
             "pmt", "hlt", "let", "ast", "excluded_tasks", "error"]
-    with open(os.path.join(out_root, "dataset_manifest.csv"), "w", newline="") as fh:
+    with open(os.path.join(out_root, "finalize_status.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         for r in rows:
@@ -267,16 +332,24 @@ def _write_manifest(rows, out_root, cfg, strategy, rej):
                 "error": r.get("error", ""),
             })
     manifest = {
+        "product": "multimodal-final",
+        "variant": variant,
         "name": cfg.name,
+        "cohort": paired_manifest.get("cohort", "unknown"),
         "built": datetime.now().isoformat(),
+        "git_sha": qpaths.git_sha(),
         "channel_strategy": strategy,
         "epoch_rejection": rej,
-        "paired_dir": cfg.paths.paired_dir,
+        "inputs": {"paired_dir": cfg.paths.paired_dir,
+                   "paired_built": paired_manifest.get("built"),
+                   "paired_git_sha": paired_manifest.get("git_sha")},
+        "clinical": clinical,
         "n_ok": sum(1 for r in rows if r.get("status") == "ok"),
         "n_failed": sum(1 for r in rows if r.get("status") == "FAILED"),
         "paired_trials_total": sum(r.get("paired_trials", 0) for r in rows),
+        "config": OmegaConf.to_container(cfg, resolve=True),
     }
-    with open(os.path.join(out_root, "dataset_manifest.json"), "w") as fh:
+    with open(os.path.join(out_root, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
     return manifest
 
@@ -287,14 +360,19 @@ def main(cfg: DictConfig) -> None:
     strategy = pre.channel_strategy
     rej = OmegaConf.to_container(pre.epoch_rejection, resolve=True)
     # Base for the relocatable outputs trees (montage asset stays repo-relative).
-    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
+    base = qpaths.resolve_base(cfg.paths.get("root"))
     montage_file = os.path.join(REPO, cfg.paths.montage)
     paired_root = os.path.join(base, cfg.paths.paired_dir)
-    out_root = os.path.join(base, cfg.paths.dataset_dir, cfg.name)
+    # Variant dir is <cohort>__<preprocessing> (cohort from the paired manifest)
+    # so both dimensions of the variant are visible in the path.
+    paired_manifest = _load_paired_manifest(paired_root)
+    variant = cfg.get("variant") or \
+        f"{paired_manifest.get('cohort', 'unknown')}__{cfg.name}"
+    out_root = os.path.join(base, cfg.paths.dataset_dir, variant)
     os.makedirs(out_root, exist_ok=True)
 
     print("=" * 70)
-    print(f"FINALIZE  name={cfg.name}  strategy={strategy}  "
+    print(f"FINALIZE  variant={variant}  strategy={strategy}  "
           f"reject_enabled={rej.get('enabled')}")
     print(f"  {os.path.relpath(paired_root, base)} -> {os.path.relpath(out_root, base)}")
     print("=" * 70)
@@ -319,9 +397,12 @@ def main(cfg: DictConfig) -> None:
             rows.append({"subject_id": pid, "status": "FAILED", "error": str(e),
                          "paired_trials": 0})
 
-    manifest = _write_manifest(rows, out_root, cfg, strategy, rej)
+    finalized = [r["subject_id"] for r in rows if r.get("status") == "ok"]
+    clinical = _write_clinical(out_root, finalized, cfg)
+    manifest = _write_manifest(rows, out_root, cfg, strategy, rej, variant,
+                               paired_manifest, clinical)
     print("\n" + "=" * 70)
-    print(f"Wrote {os.path.join(out_root, 'dataset_manifest.csv')}")
+    print(f"Wrote {os.path.join(out_root, 'finalize_status.csv')}")
     print(f"  ok={manifest['n_ok']}  failed={manifest['n_failed']}  "
           f"paired_trials_total={manifest['paired_trials_total']}")
 

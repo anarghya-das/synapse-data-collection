@@ -18,13 +18,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synapse_qc import qc_core, inventory  # noqa: E402
+from synapse_qc import qc_core, inventory, paths as qpaths  # noqa: E402
 import mne  # noqa: E402
 
 warnings.filterwarnings("ignore")
 mne.set_log_level("ERROR")
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs", "quality", "spotcheck")
+# Output location comes from conf/config.yaml (paths.qc_dir).
+OUT = os.path.join(qpaths.output_paths()["qc"], "spotcheck")
 WIN = (300.0, 315.0)   # 15 s window in the middle of the recording
 
 

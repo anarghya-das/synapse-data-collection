@@ -21,19 +21,20 @@ defaults:
   - _self_
 
 # Keep CWD unchanged (relative paths resolve) and corral Hydra's run log under
-# outputs/ instead of the repo root -- same convention as build_dataset.
+# <base>/outputs/logs/ -- same convention as build_dataset.
 hydra:
   run:
-    dir: outputs/runs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
   sweep:
-    dir: outputs/runs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
     subdir: ${hydra.job.num}
   output_subdir: null
   job:
     chdir: false
 
-# Output goes to outputs/paired/ (flat; no variant subfolder). ``name`` is still
-# recorded in the manifest for which preprocessing variant was used.
+# Output goes to outputs/multimodal/paired/ (flat; no variant subfolder -- pairing
+# is the shared stage-1 intermediate). ``name`` is still recorded in the manifest
+# for which preprocessing variant was used.
 name: ${preprocessing.name}
 
 paths:
@@ -43,9 +44,11 @@ paths:
   # Also honored via $SYNAPSE_DATA_BASE. Raw recordings: $SYNAPSE_DATA_ROOT / data_root.
   root: null
   data_root: null                                            # explicit raw dir; null => <root>/data
-  synapse_repo: /Users/anarghya/Developer/research/synapse   # published EEG-alignment helpers (create_mne, events)
+  # Analysis repo (published EEG-alignment helpers); $SYNAPSE_REPO overrides.
+  synapse_repo: ${oc.env:SYNAPSE_REPO,/Users/anarghya/Developer/research/synapse}
   montage: assets/ceegrid_montage_head.npz                   # injected into create_mne (no CWD dependency)
-  paired_dir: outputs/paired
+  # Output location (resolves as <base>/<dir>). Change it HERE, never in code.
+  paired_dir: outputs/multimodal/paired
 
 tasks:
   order: [pmt, let, hlt, ast]

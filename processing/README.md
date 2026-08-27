@@ -31,7 +31,28 @@ editing code — point the tooling at the base dir. The published copy of `data/
 
 Precedence for the raw dir: `paths.data_root` / `--data-root` → `$SYNAPSE_DATA_ROOT`
 → `$SYNAPSE_DATA_BASE/data` → `<repo>/data`. Assets (`assets/` montage + event
-map) and the sibling `../../synapse` code stay repo-relative and are **not** relocated.
+map) and the sibling `../../synapse` code stay repo-relative and are **not** relocated
+(`$SYNAPSE_REPO` overrides the analysis-repo location per machine).
+
+## Output layout
+
+Everything generated lands under `<base>/outputs/` (never in git; the whole
+`outputs/` dir is gitignored). Each location is defined once in the `paths:`
+section of the relevant Hydra config — relocate by editing YAML, never code.
+Variant directories are always named `<cohort>__<preprocessing>` and each
+carries a `manifest.json` recording the git SHA, resolved config, and inputs.
+
+```
+outputs/
+  qc/                                     # run_quality.py / spotcheck.py (paths.qc_dir)
+  epochs/<cohort>__<preproc>/             # build_dataset (paths.output_dir): epochs.pkl + manifest.json
+  multimodal/
+    paired/                               # pair_video (paths.paired_dir) — stage-1 INTERMEDIATE
+    final/<cohort>__<preproc>/            # finalize_dataset (paths.dataset_dir) — training-ready
+  logs/                                   # Hydra run logs
+```
+
+See `outputs/README.md` in the data tree for the full map.
 
 ## Running the quality analysis
 
@@ -47,7 +68,7 @@ python -m synapse_qc.inventory                  # audit how each recording resol
 
 QC runs on the **raw** OpenBCI stream (`obci_eeg1`) — see "Two EEG streams" below.
 The default **`robust`** method (filter-first; grounded in PREP/FASTER — see
-`outputs/quality/QC_methodology_review.md`) first band-passes a copy to **1–50 Hz** so the
+`docs/QC_methodology_review.md`) first band-passes a copy to **1–50 Hz** so the
 score does not depend on whether the input was already filtered, then flags a channel
 as **bad** if any criterion trips:
 
@@ -114,13 +135,13 @@ python -m pipelines.build_dataset cohort.exp='[EXP01,EXP13]' cohort.ctrl='[CTRL1
 ```
 - `conf/cohort/` — participant-ID sets (`published` 18+10, `usable` 24+12, `all`); override with `cohort.exp=[...] cohort.ctrl=[...]`.
 - `conf/preprocessing/` — variants for comparing channel handling: **`drop` / `interpolate` / `zero_mask` / `keep_all`** (the published mirror uses **`interpolate`** — verified against the pkl).
-- Output: `outputs/processed/<variant>.pkl` (+ `<variant>.manifest.json` with cohort, params, file resolution, epoch counts, channel masks — the provenance record). **`outputs/processed/` files are large (~450 MB each)** — treat as build artifacts.
+- Output: `outputs/epochs/<cohort>__<preprocessing>/` holding `epochs.pkl` + `manifest.json` (cohort, params, git SHA, resolved config, file resolution, epoch counts, channel masks — the provenance record). The variant dir name defaults to `<cohort>__<preprocessing>`; override with `variant=<name>`. **The pkls are large (~450 MB each)** — treat as build artifacts.
 
 **Pkl schema** — the built pkl mirrors the **current `../../synapse` `save_preprocessed` schema** so it is a **drop-in for the current analysis scripts** (`python -m publication_analysis input=outputs/processed/<variant>.pkl …`). The 16 top-level keys: `exp_epochs, ctrl_epochs, exp_subjects, ctrl_subjects, exp_quality, ctrl_quality, clinical_data, clinical_scores, demographics, responses, quality_report, channel_strategy, epoch_rejection_enabled, channel_masks, preprocessing_date, config`. Clinical/behavioural/report keys are built with the published builders (`load_clinical_data` / `extract_clinical_scores` / `extract_demographics` / `load_responses` / `generate_quality_report`) from the clinical workbook + the per-subject `*_responses.csv`. The workbook is **per-cohort**: `cohort=published` pins the older `../../synapse/02_PC Data.xlsx` the published pkl was built from (reproduction fidelity); every other cohort uses the newer local `02_PCData.xlsx` (updated 2026-07: adds EXP44–47, CTRL26–28, and the Excluded Data / per-device Questionnaires sheets). Override per run with `cohort.clinical_data=/path/to.xlsx`. Provenance (`variant`, `cohort`) lives inside `config` and the `<variant>.manifest.json` sidecar. (This is a superset of the older `synapse_preprocessed.pkl`, which had only 11 of these keys — it predates `channel_masks`/`demographics`/`responses`/`channel_strategy`/`epoch_rejection_enabled`.) Nested notes: each `*_quality` dict is a superset of the published one (adds `ch_sd_uv`/`channel_mask`/`epoch_rejection` — harmless, only `quality_score` is read downstream); `clinical_scores` uses `HQ_Functional`/`HQ_Social` where the older pkl used `HQ_Fear`/`HQ_Sensitivity` (a relabel of the same two columns).
 
 ### Reproduction check vs the published pkl
 
-`python -m pipelines.compare --variant published` diffs a build against
+`python -m pipelines.compare --variant published__published` diffs a build against
 `../../synapse/.../synapse_preprocessed.pkl` (aligning by `subject_id`; published order is
 processing order, not sorted). Current result for the `published` mirror:
 
@@ -143,7 +164,7 @@ one-time alignment + video encoding is separated from the fast, swappable channe
 experiments. The alignment library lives in `synapse_qc/av_align.py`; files resolve through
 `inventory` (XDF + the per-participant `.avi`).
 
-### 1. `pipelines/pair_video.py` → `outputs/paired/` (slow, one-time)
+### 1. `pipelines/pair_video.py` → `outputs/multimodal/paired/` (slow, one-time)
 
 Filters, epochs, and pairs **every** boundary-valid trial with **all 16 channels intact**.
 QC runs for **detection only** — bad channels are recorded (in each `_epo.fif`'s
@@ -166,17 +187,21 @@ python -m pipelines.pair_video cohort=published video.no_video=true   # EEG epoc
   and `epoch_rejection` are ignored** (finalize's job).
 - **`marker` mode**: legacy marker-to-marker segments + a single filtered `Raw.fif` (still
   honours `channel_strategy`).
-- Output: `outputs/paired/<PID>/{eeg,video}/` + per-subject `*_alignment.csv` + a top-level
-  `dataset_manifest.csv`. **Clips are large build artifacts** (`outputs/paired/` gitignored).
+- Output: `outputs/multimodal/paired/<PID>/{eeg,video}/` + per-subject `*_alignment.csv` + a
+  top-level `pairing_status.csv` / `manifest.json`. **Clips are large build artifacts.**
   A recording without `obci_eeg1` (e.g. Neurable-only) is a per-subject FAILED row, not a crash.
 
-### 2. `pipelines/finalize_dataset.py` → `outputs/dataset/<name>/` (fast, swappable)
+### 2. `pipelines/finalize_dataset.py` → `outputs/multimodal/final/<cohort>__<preproc>/` (fast, swappable)
 
 Applies `channel_strategy` + PTP `epoch_rejection` from the **same `conf/preprocessing/`
 group** `build_dataset` uses, so finalized variants stay in lock-step. It emits a per-channel
 **validity mask** (`*_channel_mask.npy`, `1`=real / `0`=interpolated/masked/dropped +
 `*_channels.json`) and re-filters each `*_alignment.csv` to the surviving pairs — **video is
-never re-encoded**, clips are referenced in place under `outputs/paired/`.
+never re-encoded**, clips are referenced in place under `outputs/multimodal/paired/`. It also
+joins the clinical workbook (`paths.clinical_data`, same published loaders `build_dataset`
+uses) into a per-variant `clinical.csv` — one row per finalized subject with the questionnaire
+scores (`clinical.measures`) + demographics, keyed by `subject_id`, so the multimodal dataset
+ships with its labels.
 
 ```bash
 python -m pipelines.finalize_dataset                          # interpolate + z=3 (= old baked-in behaviour)

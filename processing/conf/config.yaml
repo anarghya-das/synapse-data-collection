@@ -17,20 +17,22 @@ defaults:
   - _self_
 
 # Keep the working directory unchanged (so our relative paths resolve) and corral
-# Hydra's run log + metadata under outputs/ instead of littering the repo root.
+# Hydra's run log + metadata under <base>/outputs/logs/ (base = $SYNAPSE_DATA_BASE,
+# else the repo) instead of littering the repo root.
 hydra:
   run:
-    dir: outputs/runs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
   sweep:
-    dir: outputs/runs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
     subdir: ${hydra.job.num}
   output_subdir: null
   job:
     chdir: false
 
-# Variant name -> output file processed/<name>.pkl (+ <name>.manifest.json).
-# Defaults to the preprocessing group name; override with variant=<name>.
-variant: ${preprocessing.name}
+# Variant identity is two-dimensional (cohort x preprocessing) and names the
+# output dir outputs/epochs/<variant>/ (epochs.pkl + manifest.json inside).
+# Override with variant=<name> for ad-hoc builds.
+variant: ${cohort.name}__${preprocessing.name}
 
 paths:
   # Base dir holding the raw `data/` and generated `outputs/` trees. null => the
@@ -43,7 +45,9 @@ paths:
   data_root: null
   # Canonical recording per participant is resolved through synapse_qc.inventory,
   # so these only need to point at the shared assets and output location.
-  synapse_repo: /Users/anarghya/Developer/research/synapse   # for the published preprocessing code
+  # Analysis repo (published preprocessing code); override per machine with
+  # $SYNAPSE_REPO when the checkout lives elsewhere.
+  synapse_repo: ${oc.env:SYNAPSE_REPO,/Users/anarghya/Developer/research/synapse}
   global_event_map: assets/global_event_id_map.pkl
   montage: assets/ceegrid_montage_head.npz   # injected into create_mne (no CWD dependency)
   # Clinical workbook for clinical_data/clinical_scores/demographics. Relative
@@ -53,9 +57,12 @@ paths:
   # older ../../synapse copy the published pkl was built from (see
   # conf/cohort/published.yaml) so the faithful mirror stays faithful.
   clinical_data: 02_PCData.xlsx
-  output_dir: outputs/processed
+  # ---- Output locations (all outputs resolve as <base>/<dir>; base comes from
+  # paths.root / $SYNAPSE_DATA_BASE / the repo). Change them HERE, never in code.
+  output_dir: outputs/epochs        # processed Epochs pkl variants (build_dataset)
+  qc_dir: outputs/qc                # quality workbook + reports (run_quality/spotcheck)
   # The original published pkl, for the comparison step:
-  published_pkl: /Users/anarghya/Developer/research/synapse/processed_data/synapse_preprocessed.pkl
+  published_pkl: ${paths.synapse_repo}/processed_data/synapse_preprocessed.pkl
 
 # Clinical questionnaire measures pulled per subject into clinical_scores.
 # Matches the current published col_mapping (HQ_Functional/HQ_Social); the older

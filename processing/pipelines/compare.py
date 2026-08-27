@@ -5,8 +5,9 @@ by subject_id (the published subject order is processing order, not sorted).
 Reports cohort differences, per-subject bad-channel/interpolation differences,
 per-task epoch counts, and numerical epoch-data differences.
 
-    python -m pipelines.compare --variant published
-    python -m pipelines.compare --variant published --mine processed/published.pkl \
+    python -m pipelines.compare --variant published__published
+    python -m pipelines.compare --variant published__published \
+        --mine outputs/epochs/published__published/epochs.pkl \
         --ref /Users/anarghya/Developer/research/synapse/processed_data/synapse_preprocessed.pkl
 """
 import os
@@ -19,7 +20,12 @@ import numpy as np
 
 warnings.filterwarnings("ignore")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_REF = "/Users/anarghya/Developer/research/synapse/processed_data/synapse_preprocessed.pkl"
+sys.path.insert(0, REPO)
+from synapse_qc import paths as qpaths  # noqa: E402
+
+DEFAULT_REF = os.path.join(
+    os.environ.get("SYNAPSE_REPO", "/Users/anarghya/Developer/research/synapse"),
+    "processed_data", "synapse_preprocessed.pkl")
 TASKS = ["pmt", "let", "hlt", "ast"]
 
 
@@ -104,12 +110,14 @@ def compare_group(mine, ref, grp):
 
 def main():
     ap = argparse.ArgumentParser(description="Compare a built variant to the published pkl.")
-    ap.add_argument("--variant", default="published")
+    ap.add_argument("--variant", default="published__published")
     ap.add_argument("--mine", default=None, help="override path to the built pkl")
     ap.add_argument("--ref", default=DEFAULT_REF)
     args = ap.parse_args()
 
-    mine_path = args.mine or os.path.join(REPO, "outputs", "processed", f"{args.variant}.pkl")
+    # Variant pkls live under paths.output_dir from conf/config.yaml.
+    mine_path = args.mine or os.path.join(
+        qpaths.output_paths()["epochs"], args.variant, "epochs.pkl")
     print(f"MINE: {mine_path}\nREF : {args.ref}")
     mine, ref = load(mine_path), load(args.ref)
 

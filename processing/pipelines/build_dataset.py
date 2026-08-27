@@ -26,7 +26,7 @@ from omegaconf import OmegaConf, DictConfig
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from synapse_qc import inventory  # noqa: E402
+from synapse_qc import inventory, paths as qpaths  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -81,7 +81,7 @@ def main(cfg: DictConfig) -> None:
     print("=" * 70)
 
     # Base for the relocatable data/outputs trees (assets stay repo-relative).
-    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
+    base = qpaths.resolve_base(cfg.paths.get("root"))
     data_root = (cfg.paths.get("data_root") or os.environ.get("SYNAPSE_DATA_ROOT")
                  or os.path.join(base, "data"))
 
@@ -161,16 +161,20 @@ def main(cfg: DictConfig) -> None:
         "config": OmegaConf.to_container(cfg, resolve=True),
     }
 
-    out_dir = os.path.join(base, cfg.paths.output_dir)
+    # One directory per variant: outputs/epochs/<cohort>__<preprocessing>/
+    # holding epochs.pkl + manifest.json (uniform with the multimodal variants).
+    out_dir = os.path.join(base, cfg.paths.output_dir, variant)
     os.makedirs(out_dir, exist_ok=True)
-    pkl_path = os.path.join(out_dir, f"{variant}.pkl")
+    pkl_path = os.path.join(out_dir, "epochs.pkl")
     with open(pkl_path, "wb") as f:
         pickle.dump(data, f)
 
     manifest = {
+        "product": "epochs",
         "variant": variant,
         "cohort": cfg.cohort.name,
         "built": data["preprocessing_date"],
+        "git_sha": qpaths.git_sha(),
         "channel_strategy": channel_strategy,
         "preprocessing": OmegaConf.to_container(pre, resolve=True),
         "tasks": task_timings,
@@ -187,8 +191,9 @@ def main(cfg: DictConfig) -> None:
         "responses_loaded": len(responses),
         "pkl": os.path.relpath(pkl_path, base),
         "pkl_mb": round(os.path.getsize(pkl_path) / 1024 / 1024, 1),
+        "config": OmegaConf.to_container(cfg, resolve=True),
     }
-    with open(os.path.join(out_dir, f"{variant}.manifest.json"), "w") as f:
+    with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
 
     print("\n" + "=" * 70)

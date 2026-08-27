@@ -8,8 +8,8 @@ Ports ``../../synapse/split_video.py`` into this repo's conventions:
     quality / epoch_rejection are all configurable and stay in lock-step with the
     processed-pkl variants;
   * task windows from ``tasks.timings``; video options from the ``video`` group;
-  * outputs under ``outputs/paired/`` (one ``<PID>/`` tree per subject
-    + a top-level ``dataset_manifest.csv``).
+  * outputs under ``outputs/multimodal/paired/`` (one ``<PID>/`` tree per subject
+    + a top-level ``pairing_status.csv`` and ``manifest.json``).
 
 The published EEG alignment helpers (``create_mne`` and the marker/event
 machinery) are reused live from ``../../synapse`` exactly like ``build_dataset``,
@@ -35,7 +35,7 @@ from omegaconf import OmegaConf, DictConfig
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
-from synapse_qc import inventory  # noqa: E402
+from synapse_qc import inventory, paths as qpaths  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
@@ -102,7 +102,7 @@ def _resolve_cohort(cfg, data_root=None):
 
 def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
     """Top-level CSV + JSON capturing per-subject status and the run provenance."""
-    csv_path = os.path.join(out_root, "dataset_manifest.csv")
+    csv_path = os.path.join(out_root, "pairing_status.csv")
     cols = [
         "group", "subject_id", "status", "mode", "n_bad_detected", "quality_score",
         "video_present", "paired_trials", "pmt", "hlt", "let", "ast",
@@ -131,9 +131,11 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
         w.writerows(flat)
 
     manifest = {
+        "product": "multimodal-paired",
         "name": cfg.name,
         "cohort": cfg.cohort.name,
         "built": datetime.now().isoformat(),
+        "git_sha": qpaths.git_sha(),
         "mode": cfg.video.mode,
         "eeg_params": eeg_params,
         "tasks": OmegaConf.to_container(cfg.tasks.timings, resolve=True),
@@ -142,8 +144,9 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
         "n_failed": sum(1 for r in rows if r.get("status") == "FAILED"),
         "n_skipped": sum(1 for r in rows if r.get("status") == "skipped"),
         "paired_trials_total": sum(r.get("paired_trials", 0) for r in rows),
+        "config": OmegaConf.to_container(cfg, resolve=True),
     }
-    with open(os.path.join(out_root, "dataset_manifest.json"), "w") as fh:
+    with open(os.path.join(out_root, "manifest.json"), "w") as fh:
         json.dump(manifest, fh, indent=2)
     return csv_path, manifest
 
@@ -151,7 +154,7 @@ def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
 @hydra.main(version_base=None, config_path="../conf", config_name="pair_video")
 def main(cfg: DictConfig) -> None:
     # Base for the relocatable data/outputs trees (assets stay repo-relative).
-    base = cfg.paths.get("root") or os.environ.get("SYNAPSE_DATA_BASE") or REPO
+    base = qpaths.resolve_base(cfg.paths.get("root"))
     data_root = (cfg.paths.get("data_root") or os.environ.get("SYNAPSE_DATA_ROOT")
                  or os.path.join(base, "data"))
 
