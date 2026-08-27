@@ -285,7 +285,9 @@ def _write_clinical(out_root, subjects, cfg):
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
         w.writerows(out_rows)
-    n_scored = sum(1 for r in out_rows if len(r) > 2)
+    n_scored = sum(1 for r in out_rows
+                   if any(str(v).strip() for k, v in r.items()
+                          if k not in ("subject_id", "group", "devices_present")))
     print(f"[clinical] wrote clinical.csv ({n_scored}/{len(out_rows)} subjects "
           f"with workbook entries, from {os.path.basename(clinical_path)})")
     return {"csv": "clinical.csv", "workbook": clinical_path,

@@ -83,7 +83,9 @@ def _check_quest(df):
 
 
 def _check_audio(df, hdr):
-    for col, want in [(4, "Audio ID"), (15, "Control"), (19, "Misophonia"),
+    for col, want in [(4, "Audio ID"), (5, "Date Tested (O*"),
+                      (7, "Date Tested (N*"),
+                      (15, "Control"), (19, "Misophonia"),
                       (30, "PTA"), (41, "PTA"), (44, "SRT RE"), (47, "WRS RE*"),
                       (68, "Total Score*"), (76, "Total Score*"),
                       (78, "Ear Tested"), (85, "Tymp RE"), (86, "Tymp LE"),
@@ -113,6 +115,7 @@ def _demographics(df, hdr, i):
 def _audio(df, i):
     r = df.iloc[i]
     row = {
+        "date_tested_openbci": _cell(r[5]), "date_tested_neurable": _cell(r[7]),
         "is_control": _cell(r[15]), "has_hearing_loss": _cell(r[16]),
         "has_tinnitus": _cell(r[17]), "has_hyperacusis": _cell(r[18]),
         "has_misophonia": _cell(r[19]),
@@ -177,5 +180,17 @@ def load_clinical_rows(xlsx_path, subjects, measures=None):
             row.update(_demographics(demo, demo_hdr, d_rows[sid]))
         if sid in a_rows:
             row.update(_audio(audio, a_rows[sid]))
+        # Devices the workbook records for this subject (a subject can have
+        # both, e.g. EXP10). NB: the EEG in the multimodal dataset is always
+        # the OpenBCI recording — pairing requires the obci_eeg1 stream.
+        devices = []
+        if any(str(row.get(k, "")).strip()
+               for k in ("pc_id", "new_pc_id", "date_tested_openbci")):
+            devices.append("OpenBCI")
+        if any(str(row.get(k, "")).strip()
+               for k in ("neurable_id", "date_tested_neurable")):
+            devices.append("Neurable")
+        row = {"subject_id": sid, "group": row["group"],
+               "devices_present": ", ".join(devices), **row}
         out.append(row)
     return out
