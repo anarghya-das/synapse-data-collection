@@ -8,7 +8,7 @@ per-task epoch counts, and numerical epoch-data differences.
     python -m pipelines.compare --variant published__published
     python -m pipelines.compare --variant published__published \
         --mine outputs/epochs/published__published/epochs.pkl \
-        --ref /Users/anarghya/Developer/research/synapse/processed_data/synapse_preprocessed.pkl
+        --ref /path/to/synapse-analysis/processed_data/synapse_preprocessed.pkl
 """
 import os
 import sys
@@ -23,9 +23,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 from synapse_qc import paths as qpaths  # noqa: E402
 
-DEFAULT_REF = os.path.join(
-    os.environ.get("SYNAPSE_REPO", "/Users/anarghya/Developer/research/synapse"),
-    "processed_data", "synapse_preprocessed.pkl")
+DEFAULT_REF = qpaths.published_pkl()   # auto-detected; $SYNAPSE_REPO overrides
 TASKS = ["pmt", "let", "hlt", "ast"]
 
 

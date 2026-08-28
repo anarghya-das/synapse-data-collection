@@ -86,7 +86,8 @@ def main(cfg: DictConfig) -> None:
                  or os.path.join(base, "data"))
 
     montage_abs = os.path.join(REPO, cfg.paths.montage)
-    pp = _import_published(cfg.paths.synapse_repo, montage_abs)
+    synapse_repo = qpaths.synapse_repo(cfg.paths.get('synapse_repo'), required=True)
+    pp = _import_published(synapse_repo, montage_abs)
 
     # Load the (published) global event-ID map directly for consistent event codes.
     with open(os.path.join(REPO, cfg.paths.global_event_map), "rb") as f:
@@ -118,7 +119,11 @@ def main(cfg: DictConfig) -> None:
     # old ../../synapse copy for reproduction fidelity) falls back to
     # paths.clinical_data (the newer local 02_PCData.xlsx). Relative paths
     # resolve against the repo dir, not Hydra's run cwd.
-    clinical_path = cfg.cohort.get("clinical_data") or cfg.paths.clinical_data
+    clinical_path = cfg.cohort.get("clinical_data")
+    if clinical_path is None and cfg.cohort.name == "published":
+        # the older workbook the published pkl was built from
+        clinical_path = qpaths.published_workbook(synapse_repo)
+    clinical_path = clinical_path or cfg.paths.clinical_data
     if not os.path.isabs(clinical_path):
         clinical_path = os.path.join(REPO, clinical_path)
     clinical_data = pp.load_clinical_data(clinical_path, clinical_measures)

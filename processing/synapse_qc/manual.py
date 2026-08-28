@@ -5,13 +5,13 @@ This is the human judgement made during collection (Excellent / Good / Average
 notes. It is NOT used by the first independent QC pass -- it is kept here for a
 later step that compares the automated score against this prior rating.
 
-The default path points at the original file in the analysis repo (it was
-deliberately left there, not copied into the data repo).
+The path is auto-detected inside the analysis repo (the file was
+deliberately left there, not copied into the data repo); $SYNAPSE_REPO overrides.
 """
 import os
 import csv
 
-DEFAULT_TSV = "/Users/anarghya/Developer/research/synapse/participant_info.tsv"
+from . import paths as _paths
 
 
 def load(path=None):
@@ -19,7 +19,7 @@ def load(path=None):
 
     The bracket markup in the source (e.g. ``[Excellent]``) is stripped.
     """
-    path = path or DEFAULT_TSV
+    path = path or _paths.participant_info_tsv()
     out = {}
     if not os.path.isfile(path):
         return out

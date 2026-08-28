@@ -47,7 +47,7 @@ paths:
   # so these only need to point at the shared assets and output location.
   # Analysis repo (published preprocessing code); override per machine with
   # $SYNAPSE_REPO when the checkout lives elsewhere.
-  synapse_repo: ${oc.env:SYNAPSE_REPO,/Users/anarghya/Developer/research/synapse}
+  synapse_repo: null   # null => auto-detect (synapse_qc.paths.synapse_repo); $SYNAPSE_REPO overrides
   global_event_map: assets/global_event_id_map.pkl
   montage: assets/ceegrid_montage_head.npz   # injected into create_mne (no CWD dependency)
   # Clinical workbook for clinical_data/clinical_scores/demographics. Relative
@@ -62,7 +62,7 @@ paths:
   output_dir: outputs/epochs        # processed Epochs pkl variants (build_dataset)
   qc_dir: outputs/qc                # quality workbook + reports (run_quality/spotcheck)
   # The original published pkl, for the comparison step:
-  published_pkl: ${paths.synapse_repo}/processed_data/synapse_preprocessed.pkl
+  published_pkl: null   # null => <synapse_repo>/processed_data/synapse_preprocessed.pkl
 
 # Clinical questionnaire measures pulled per subject into clinical_scores.
 # Matches the current published col_mapping (HQ_Functional/HQ_Social); the older

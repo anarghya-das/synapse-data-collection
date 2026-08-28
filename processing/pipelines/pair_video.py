@@ -61,7 +61,7 @@ def _import_utils(synapse_repo, montage_abs):
     if synapse_repo not in sys.path:
         sys.path.insert(0, synapse_repo)
     from preprocessing import utils  # same module av_align.align_eeg looks up
-    from synapse_qc import qc_core
+    from synapse_qc import qc_core, published_compat
 
     _orig = utils.create_mne
 
@@ -71,6 +71,11 @@ def _import_utils(synapse_repo, montage_abs):
 
     utils.create_mne = _create_mne_abs   # av_align calls utils.create_mne at run time
     utils.quality_check = qc_core.quality_check  # robust QC (create_mne calls this)
+    # 3. Older checkouts of create_mne lack channel_strategy='keep_all', which
+    #    epoch-mode pairing requires (detect-and-defer). Added only if missing.
+    if published_compat.ensure_keep_all(utils):
+        print("[compat] analysis repo lacks channel_strategy='keep_all'; shimmed "
+              "(see synapse_qc/published_compat.py)")
     return utils
 
 
@@ -159,7 +164,8 @@ def main(cfg: DictConfig) -> None:
                  or os.path.join(base, "data"))
 
     montage_abs = os.path.join(REPO, cfg.paths.montage)
-    _import_utils(cfg.paths.synapse_repo, montage_abs)
+    synapse_repo = qpaths.synapse_repo(cfg.paths.get('synapse_repo'), required=True)
+    _import_utils(synapse_repo, montage_abs)
     from synapse_qc import av_align  # imported after ../../synapse is on sys.path
 
     pre = cfg.preprocessing

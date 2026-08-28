@@ -4,7 +4,9 @@ name: published
 # Reproduction fidelity: build the published mirror from the same clinical
 # workbook the published pkl used (Apr 2026 state), NOT the newer default
 # 02_PCData.xlsx. Overrides paths.clinical_data (see build_dataset.py).
-clinical_data: /Users/anarghya/Developer/research/synapse/02_PC Data.xlsx
+# null => auto-detect inside the analysis repo (the filename is not
+# consistent across checkouts: '02_PC Data.xlsx' vs '02_PC Data .xlsx').
+clinical_data: null
 exp:
   - EXP01
   - EXP02

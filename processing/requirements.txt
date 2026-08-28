@@ -10,3 +10,7 @@ matplotlib>=3.8
 # Hydra config system used by pipelines/ (build_dataset, pair_video, finalize_dataset)
 hydra-core>=1.3
 omegaconf>=2.3
+# Video encoding for pipelines/pair_video.py (imported as cv2 by
+# synapse_qc/av_align.py). Only the video half needs it -- EEG-only runs
+# (video.no_video=true) work without it.
+opencv-python>=4.8

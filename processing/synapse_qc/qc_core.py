@@ -2,7 +2,7 @@
 
 These functions are vendored (copied verbatim, with light trimming) from the
 main analysis repo's ``preprocessing/utils.py``
-(``/Users/anarghya/Developer/research/synapse/preprocessing/utils.py``) so the
+(the analysis repo's ``preprocessing/utils.py``) so the
 data repo can run quality analysis without depending on the full 2400-line
 ``utils`` module. Only the pieces needed for QC are kept:
 

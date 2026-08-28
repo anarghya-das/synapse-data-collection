@@ -29,6 +29,26 @@ editing code — point the tooling at the base dir. The published copy of `data/
   ```
 - **`run_quality.py`:** `--data-root /path/to/data` (else falls back to the env vars).
 
+### Environment
+
+The pipelines need two things besides this repo:
+
+- **The analysis repo** (`publication_analysis/` + `preprocessing/`), reused live
+  for the published preprocessing code. It is **auto-detected** in the usual
+  sibling layouts (`../synapse-analysis`, `../synapse`) — nothing is hardcoded to
+  one machine. Override with `$SYNAPSE_REPO` or `paths.synapse_repo=...`; add new
+  layouts to `synapse_qc.paths._SYNAPSE_REPO_CANDIDATES`. Checkouts differ, so
+  `synapse_qc/published_compat.py` patches over gaps (currently: older
+  `create_mne` lacking `channel_strategy='keep_all'`, which pairing requires).
+- **`opencv-python`** for the video half of `pair_video` (EEG-only runs with
+  `video.no_video=true` do not need it). On the lab server `/home` is full, so it
+  is installed outside it:
+
+  ```bash
+  pip install --target=/data1/anarghya/pylibs "opencv-python-headless>=4.8"
+  export PYTHONPATH=/data1/anarghya/pylibs
+  ```
+
 Precedence for the raw dir: `paths.data_root` / `--data-root` → `$SYNAPSE_DATA_ROOT`
 → `$SYNAPSE_DATA_BASE/data` → `<repo>/data`. Assets (`assets/` montage + event
 map) and the sibling `../../synapse` code stay repo-relative and are **not** relocated
@@ -58,6 +78,7 @@ See `outputs/README.md` in the data tree for the full map.
 
 ```bash
 conda activate brain            # or: pip install -r requirements.txt
+export SYNAPSE_DATA_BASE=/data1/anarghya/synapse-data   # where data/ + outputs/ live
 python run_quality.py --date $(date +%F)
 python run_quality.py --preset strict          # stricter thresholds
 python run_quality.py --only EXP13,CTRL09       # spot-check a subset
