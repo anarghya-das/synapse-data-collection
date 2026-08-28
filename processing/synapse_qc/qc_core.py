@@ -419,7 +419,7 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         # (A single whole-recording correlation misses an electrode that detaches
         # part-way through -- see docs/QC_grade_bands_review.md.)
         win_s = config.get('corr_window_s', 1.0)
-        bad_frac_thresh = config.get('corr_bad_time_frac', 0.01)
+        bad_frac_thresh = config.get('corr_bad_time_frac', 0.10)
         win_max_corr, n_corr_windows = windowed_max_corr(
             data_qc, raw_qc.info['sfreq'], window_s=win_s)
         corr_bad_frac = (win_max_corr < corr_low).mean(axis=1)
