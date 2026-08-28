@@ -50,14 +50,19 @@ is electrically disconnected in most sessions (bad in 38/43 live recordings).
 In the failing sessions it reads a constant **-187500.0156 uV**, exactly the
 ADS1299 negative rail at gain 24, which is what a *floating* input does. It is
 an OPEN, not a short and not a gel problem. The rig, not the montage: R5 (the
-immediate neighbour of REF/GND at R4a/R4b) is healthy, and excluding ch13 the
+other immediate neighbour of GND at R6) is healthy, and excluding ch13 the
 right grid matches the left (22.3% vs 18.6% bad, p=0.86) — so **the right-side
 data is usable**. Do not "fix" this in analysis code. Diagnosis + repair
 procedure: `docs/recording_rig_faults.md`.
 
 THREE MORE, same doc: (2) the 7 "all 16 channels dead" recordings are ONE
 REF/BIAS failure each -- every channel pinned at the negative rail -- not 16
-dead electrodes; REF/BIAS are R4a/R4b on the SAME right grid as R7. (3) **EXP47
+dead electrodes; REF is L6 (LEFT grid) and BIAS is R6 (RIGHT grid) -- OPPOSITE
+connectors, so either socket can cause it. NB the reference design contradicts
+itself on this: its "Channel Selection" section says L6=REF/R6=GND while
+"Connecting the Adapter PCB" says R4a/R4b. L6/R6 is correct -- it is the only
+one consistent with the repo's own channel table (3 and 6 skipped on BOTH ears
+= 8+8). Do not trust the R4a/R4b line. (3) **EXP47
 and CTRL27 contain DUPLICATED L/R data** -- all 8 pairs at r~1.000000, unity
 scale, so the right grid carries no independent signal; QC scored them Good/87.5
 and Average/62.5 because `bads_highcorr` is reported but NEVER SCORED. Treat

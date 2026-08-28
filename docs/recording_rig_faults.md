@@ -7,6 +7,47 @@ it silently produced duplicated data that the QC scored as good.
 **Status:** open, not yet repaired. **Affects:** OpenBCI recordings from
 2025-02-27 onward. **Owner:** whoever next has the rig on the bench.
 
+## First: the reference design contradicts itself about REF/GND — use L6/R6
+
+`MKnierim/openbci-ceegrids` states the REF/GND assignment **two different ways**:
+
+| Section | Statement |
+|---|---|
+| *Channel Selection* | "excluding channel L3 & R3, and using channel **L6 as REF and R6 as GND**" |
+| *Connecting the Adapter PCB* | "connect the designated electrodes/pins (here **R4a and R4b**) to the bottom SRB (for REF) and bottom BIAS (for GND)" |
+
+**L6/R6 is the correct one for this layout**, because only it is consistent with
+the repo's own channel table (Cyton = L1,L2,L4,L5,L7,L8,L9,L10; Daisy =
+R1,R2,R4,R5,R7,R8,R9,R10 — i.e. 3 *and* 6 skipped on both ears):
+
+- `L6 = REF, R6 = GND` -> 10 per ear, minus L3/R3 excluded, minus L6/R6 for
+  REF/GND = **8 + 8 = 16**. Matches the table exactly.
+- `R4a/R4b` -> the right grid would lose R3 + R4a + R4b = 7 recorded and the left
+  only L3 = 9 recorded. Asymmetric, and position 6 would not be skipped.
+  **Contradicts the table.** That line appears to be carried over from the
+  standard Debener cEEGrid convention, where R4a/R4b *are* the usual ref/ground
+  pair — it does not describe this adapter's default layout.
+
+**Consequences, which differ from R4a/R4b in ways that matter here:**
+
+1. **REF and GND sit on OPPOSITE grids** — REF on the left, BIAS on the right.
+   So the whole-board rail of fault 2 can be caused by **either** connector, not
+   just the right one. Two single points of failure on two different sockets.
+2. **R5 and R7 are both immediate neighbours of R6 (GND)** — and behave
+   completely differently: R5 is 20.9 % bad at a normal 10.87 uV median SD,
+   R7 is 88.4 % bad at 0.00 uV. Two electrodes equidistant from GND, opposite
+   outcomes. This *strengthens* the conclusion that R7 is a channel-specific
+   hardware fault, not any kind of reference/ground proximity effect.
+3. **L5 and L7 are the immediate neighbours of L6 (REF)**, and they do show the
+   expected physics: median SD 9.00 uV versus 11.70 uV for the other left
+   channels. A channel next to the reference has a smaller differential signal.
+   That is normal, not a fault — but the QC applies **absolute** thresholds
+   (`flat_voltage` 0.5 uV, `sd_floor_uv` 0.3 uV) uniformly, so REF-adjacent
+   channels are structurally closer to being flagged. Worth keeping in mind
+   before reading anything into L7's elevated 32.6 % failure rate.
+
+---
+
 ## Fault 1 — R7 open circuit (most frequent)
 
 The right-ear cEEGrid electrode **R7** — OpenBCI **channel 13**, the Daisy
@@ -79,10 +120,11 @@ connection is lost: every input floats and saturates together.
 | CTRL14 | 93.5 % | 15/16 | all negative |
 | **EXP14** | **36.9 %** | **0/16** | **mixed — a different fault** |
 
-REF is R4a and BIAS is R4b, **both on the right grid** — the same connector that
-hosts the chronically-open R7. A single bad connection there takes down all 16
-channels. This reframes six lost sessions as one recurring single-point failure,
-and it is the same suspect as fault 1.
+REF is **L6 (left grid)** and BIAS is **R6 (right grid)** — they sit on
+*opposite* connectors, so a single bad connection at **either** socket takes
+down all 16 channels. This reframes six lost sessions as one recurring
+single-point failure, but it does **not** localise it to the right grid: check
+L6 -> Cyton SRB and R6 -> Cyton BIAS continuity, both.
 
 CTRL01 and CTRL02 are the intermediate case: all 8 right-grid channels railed
 while the left stayed clean, i.e. REF/BIAS still contacting but the right grid's
@@ -165,11 +207,12 @@ consistent with a high-impedance / marginal connection rather than a clean open.
 
 ## Fault 1 details — what was ruled out, and why
 
-- **Not proximity to the reference.** REF is R4a and GND/BIAS is R4b (both on
-  the right grid, per the [openbci-ceegrids](https://github.com/MKnierim/openbci-ceegrids)
-  reference design). **R5 is the immediate neighbour of those pads and is
-  completely healthy** (median SD 10.9 uV, 21 % bad). R7 sits three positions
-  further away. Electrical proximity to REF/GND does not explain it.
+- **Not proximity to the reference or ground.** GND is R6 (see the section
+  above on the reference design's contradictory REF/GND text). **R5 and R7 are
+  its two immediate neighbours** — R5 is completely healthy (median SD 10.87 uV,
+  20.9 % bad) while R7 is 88.4 % bad at 0.00 uV. Equidistant from GND, opposite
+  outcomes, so proximity explains nothing. REF is on the *other* grid (L6)
+  entirely.
 - **Not the reference electrode.** All 16 channels reference to R4a; if REF
   were compromised every channel would degrade together. The other 15 do not.
 - **Not a solder bridge / short.** A short to REF or a disabled channel yields
