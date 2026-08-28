@@ -4,6 +4,12 @@ PsychoPy experiment and configuration for collecting synchronized EEG, audio, an
 
 The offline QC and dataset-building pipelines for the recorded data live in [`processing/`](processing/README.md) (formerly the standalone `synapse-data` repo, merged in with history preserved). The raw recordings themselves live on the lab server — see that README's "Data location" section.
 
+## Known hardware issues
+
+- **Channel 13 (R7) is an open circuit** in most recordings — a rig fault,
+  not a montage or analysis problem, and the rest of the right grid is fine.
+  Diagnosis and repair steps: [`docs/channel13_R7_open_circuit.md`](docs/channel13_R7_open_circuit.md).
+
 ## Pre-Requisites
 
 - Set up the recording environment by following [this guide](https://docs.google.com/document/d/1NA2v7Z6gLFAqDksrsyBf3V2RNZ6RxAdAVVEvcNDk-yA/edit?usp=sharing)

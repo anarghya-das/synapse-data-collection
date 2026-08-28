@@ -43,6 +43,22 @@ LabRecorder `update`/`select all`/`start` sequence).
   in Builder and it re-saves, it overwrites edits made on disk. Make psyexp
   edits with Builder closed, and have the user re-open it fresh afterwards.
 
+## OPEN HARDWARE FAULT: channel 13 (R7) is an open circuit
+
+The right cEEGrid's **R7** pad — OpenBCI **channel 13**, the Daisy's 5th input —
+is electrically disconnected in most sessions (bad in 38/43 live recordings).
+In the failing sessions it reads a constant **-187500.0156 uV**, exactly the
+ADS1299 negative rail at gain 24, which is what a *floating* input does. It is
+an OPEN, not a short and not a gel problem. The rig, not the montage: R5 (the
+immediate neighbour of REF/GND at R4a/R4b) is healthy, and excluding ch13 the
+right grid matches the left (22.3% vs 18.6% bad, p=0.86) — so **the right-side
+data is usable**. Do not "fix" this in analysis code. Diagnosis + repair
+procedure: `docs/channel13_R7_open_circuit.md`.
+
+Gotcha when re-deriving it: the QC workbook shows ch13 SD as `0.0000`, but that
+is the POST-BAND-PASS SD (a DC constant filters to zero variance). The raw value
+is a rail. Reading it as "zero" flips the diagnosis from open to short.
+
 ## EEG recording safety net (`eeg_quality/`)
 
 Two decoupled layers guard against silently losing a session's EEG/video:

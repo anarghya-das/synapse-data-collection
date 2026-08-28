@@ -111,6 +111,16 @@ Pairing the grade with a second axis (epoch-rejection rate from
 `finalize_dataset`, or SNR of retained channels) would make it much more
 informative.
 
+## Related finding: channel 13 (R7) is a rig fault, not a data problem
+
+Auditing per-channel failure rates with this scoring surfaced that **R7 /
+OpenBCI channel 13 fails in 88 % of recordings** (chi-square vs uniform = 95.6,
+p < 0.0001) because its input is an open circuit — it reads the ADS1299
+negative rail. Excluding it, the right grid matches the left (22.3 % vs 18.6 %
+bad, p = 0.86), so the right-side data is usable. It does mean the score
+currently charges every subject 6.25 points for a hardware fault. Full
+diagnosis and the bench repair procedure: `../../docs/channel13_R7_open_circuit.md`.
+
 ## References
 
 - Gabard-Durnam, L. J., Mendez Leal, A. S., Wilkinson, C. L., & Levin, A. R. (2018).
