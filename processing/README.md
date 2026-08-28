@@ -105,11 +105,13 @@ legacy, 81 under robust).
 
 **Recommended cohort: 28 EXP / 15 CTRL** (robust QC at the study's own inclusion bar).
 
-> Counts as of the 2026-08-28 QC run (all 54 participants on disk, windowed
-> correlation criterion). `conf/cohort/usable.yaml` still lists the older
-> 24 + 12 set — it has **not** been auto-updated, because adding subjects means
-> re-running `pair_video` for them. The subjects it is missing are EXP43, EXP52,
-> EXP53 (never scored before this run) plus EXP47, CTRL26, CTRL27, CTRL28.
+> Counts as of the 2026-08-28 QC run (all 54 participants, windowed correlation
+> criterion + duplicate detection + R07 excluded from the score). The cohort is
+> pinned in **`conf/cohort/usable_20260828.yaml`** (28 EXP / 15 CTRL), selected
+> on **independent** channels — neither faulty nor a duplicate of another
+> channel. The older `usable.yaml` (24 + 12) is kept for reproducibility of
+> earlier builds. Counting by independent channels rather than score: `>= 4`
+> gives 28/15, `>= 7` gives 28/13, `>= 8` gives 25/10.
 
 The published set is **18 EXP + 10 CTRL** (authoritative list in
 `../../synapse/processed_data/synapse_preprocessed.pkl`, keys `exp_subjects` /
