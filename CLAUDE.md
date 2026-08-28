@@ -43,7 +43,7 @@ LabRecorder `update`/`select all`/`start` sequence).
   in Builder and it re-saves, it overwrites edits made on disk. Make psyexp
   edits with Builder closed, and have the user re-open it fresh afterwards.
 
-## OPEN HARDWARE FAULT: channel 13 (R7) is an open circuit
+## OPEN HARDWARE FAULTS in the recording rig (4 of them)
 
 The right cEEGrid's **R7** pad — OpenBCI **channel 13**, the Daisy's 5th input —
 is electrically disconnected in most sessions (bad in 38/43 live recordings).
@@ -53,7 +53,16 @@ an OPEN, not a short and not a gel problem. The rig, not the montage: R5 (the
 immediate neighbour of REF/GND at R4a/R4b) is healthy, and excluding ch13 the
 right grid matches the left (22.3% vs 18.6% bad, p=0.86) — so **the right-side
 data is usable**. Do not "fix" this in analysis code. Diagnosis + repair
-procedure: `docs/channel13_R7_open_circuit.md`.
+procedure: `docs/recording_rig_faults.md`.
+
+THREE MORE, same doc: (2) the 7 "all 16 channels dead" recordings are ONE
+REF/BIAS failure each -- every channel pinned at the negative rail -- not 16
+dead electrodes; REF/BIAS are R4a/R4b on the SAME right grid as R7. (3) **EXP47
+and CTRL27 contain DUPLICATED L/R data** -- all 8 pairs at r~1.000000, unity
+scale, so the right grid carries no independent signal; QC scored them Good/87.5
+and Average/62.5 because `bads_highcorr` is reported but NEVER SCORED. Treat
+them as 8-channel or exclude. (4) EXP52 (newest) has the whole Daisy block at
+literal 0.0 in both streams = Daisy not streaming; suspect the Y-splitter.
 
 Gotcha when re-deriving it: the QC workbook shows ch13 SD as `0.0000`, but that
 is the POST-BAND-PASS SD (a DC constant filters to zero variance). The raw value

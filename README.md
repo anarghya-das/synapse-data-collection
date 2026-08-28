@@ -8,7 +8,7 @@ The offline QC and dataset-building pipelines for the recorded data live in [`pr
 
 - **Channel 13 (R7) is an open circuit** in most recordings — a rig fault,
   not a montage or analysis problem, and the rest of the right grid is fine.
-  Diagnosis and repair steps: [`docs/channel13_R7_open_circuit.md`](docs/channel13_R7_open_circuit.md).
+  Diagnosis and repair steps: [`docs/recording_rig_faults.md`](docs/recording_rig_faults.md).
 
 ## Pre-Requisites
 

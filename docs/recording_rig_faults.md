@@ -1,7 +1,13 @@
-# Channel 13 (R7) open-circuit fault — diagnosis and repair
+# Recording rig faults — diagnosis and repair
+
+Four distinct hardware faults found in the OpenBCI + cEEGrid rig, in order of
+severity. Fault 1 (R7) is the most frequent; **fault 3 is the most serious** —
+it silently produced duplicated data that the QC scored as good.
 
 **Status:** open, not yet repaired. **Affects:** OpenBCI recordings from
 2025-02-27 onward. **Owner:** whoever next has the rig on the bench.
+
+## Fault 1 — R7 open circuit (most frequent)
 
 The right-ear cEEGrid electrode **R7** — OpenBCI **channel 13**, the Daisy
 board's 5th input — is electrically disconnected in most sessions. This is a
@@ -55,7 +61,109 @@ likely rather than a per-session gel/prep mistake:
 | 2025-09 .. 2026-02 | railed (open) |
 | 2026-06 .. 2026-08 | mixed |
 
-## 2. What was ruled out, and why
+
+
+---
+
+# Fault 2 — whole-board rail: a single REF/BIAS failure, not 16 dead electrodes
+
+The 7 recordings previously written off as "all 16 channels dead" are not 16
+independent electrode failures. **Six of them have every channel pinned at the
+NEGATIVE rail** (-187.5 mV), which is what happens when the reference or bias
+connection is lost: every input floats and saturates together.
+
+| Recording | mean samples at rail | channels >90 % railed | sign |
+|---|---|---|---|
+| CTRL11, CTRL13, CTRL15, CTRL16 | 100 % | 16/16 | all negative |
+| EXP12 | 98.8 % | 16/16 | all negative |
+| CTRL14 | 93.5 % | 15/16 | all negative |
+| **EXP14** | **36.9 %** | **0/16** | **mixed — a different fault** |
+
+REF is R4a and BIAS is R4b, **both on the right grid** — the same connector that
+hosts the chronically-open R7. A single bad connection there takes down all 16
+channels. This reframes six lost sessions as one recurring single-point failure,
+and it is the same suspect as fault 1.
+
+CTRL01 and CTRL02 are the intermediate case: all 8 right-grid channels railed
+while the left stayed clean, i.e. REF/BIAS still contacting but the right grid's
+recording electrodes not.
+
+**Diagnostic:** treat any recording where *all* channels rail as a REF/BIAS
+connection failure. Check R4a -> Cyton SRB and R4b -> Cyton BIAS continuity
+first, before suspecting electrodes.
+
+---
+
+# Fault 3 — DUPLICATED L/R data (most serious; QC did not catch it)
+
+**EXP47 (2026-06-23) and CTRL27 (2026-06-25) contain no independent right-grid
+data.** Every left channel and its right counterpart are the same signal:
+
+| | EXP47 | CTRL27 |
+|---|---|---|
+| L/R pairs with r ~ 1.000000 | 8/8 (L01/R01 bit-identical) | 8/8 |
+| amplitude scale R/L | 1.0000 | 1.0000 |
+| R-L offset | 0.00-0.49 uV | 0.02-0.55 uV |
+
+Correlations of 1.000000 at unity scale with sub-microvolt offsets are two ADCs
+sampling **the same physical inputs** — not a software copy (which would be
+bit-identical throughout) but a wiring fault, with the Daisy inputs seeing the
+left grid's electrodes. The two sessions are two days apart, so this was a
+wiring state during that period; check whether anything was re-plugged around
+2026-06-23.
+
+**The QC missed this completely.** EXP47 scored **Good / 87.5** with only 2 bad
+channels; CTRL27 scored **Average / 62.5**. Both are in the usable tier. The
+`bads_highcorr` ("bridge?") check is the only thing that looks for this and it
+is **reported, never scored** — and for CTRL27 it did not fire at all.
+
+**Action:** treat EXP47 and CTRL27 as **8-channel recordings**, or exclude them.
+Do not use their right-grid channels. Re-check any session recorded between
+2026-06-20 and 2026-06-30.
+
+**Code follow-up:** promote duplicate detection to a scored, blocking check —
+any pair at |r| > 0.9999 on the raw stream means one channel is not real data.
+A whole-grid duplication should fail the recording outright.
+
+---
+
+# Fault 4 — Daisy not streaming (EXP52, the most recent session)
+
+**EXP52 (2026-08-25)** is the newest recording and is a different failure again.
+Channels 9-16 read **literal 0.0** on every sample in *both* `obci_eeg1` and
+`obci_eeg2` — not the rail. Literal zeros across the whole Daisy block mean the
+Daisy was not delivering data at all, rather than its inputs floating.
+Separately, L01 is railed at 100 % (a fault-1-type open on the Cyton side).
+
+The two sessions before it (EXP43 2026-08-04, EXP53 2026-08-10) both scored Good
+/ 87.5, so this appeared after 2026-08-10 and is a **live problem on the current
+rig**.
+
+**Diagnostic:** check the **Y-splitter cable** between Cyton and Daisy (the
+reference design requires it and it is the single point of failure for the
+entire right block), that the Daisy is seated, and that the GUI/firmware is in
+16-channel mode. The wiggle test applies here at the Y-splitter and board-stack
+level rather than at an individual pin.
+
+---
+
+# Also: R7 clips at the rail even in the recent "good" sessions
+
+R7 is not merely absent-or-present. In the two most recent healthy recordings it
+is intermittently saturating:
+
+| Recording | samples at negative rail, ch13 |
+|---|---|
+| EXP43 (2026-08-04) | 79.3 % |
+| EXP53 (2026-08-10) | 62.6 % |
+
+Both scored Good / 87.5 overall, and R7 was flagged bad in both — but "flagged
+bad" understates it: the channel is clipping for most of the recording. This is
+consistent with a high-impedance / marginal connection rather than a clean open.
+
+---
+
+## Fault 1 details — what was ruled out, and why
 
 - **Not proximity to the reference.** REF is R4a and GND/BIAS is R4b (both on
   the right grid, per the [openbci-ceegrids](https://github.com/MKnierim/openbci-ceegrids)

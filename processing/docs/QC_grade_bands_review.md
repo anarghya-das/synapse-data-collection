@@ -119,7 +119,7 @@ p < 0.0001) because its input is an open circuit — it reads the ADS1299
 negative rail. Excluding it, the right grid matches the left (22.3 % vs 18.6 %
 bad, p = 0.86), so the right-side data is usable. It does mean the score
 currently charges every subject 6.25 points for a hardware fault. Full
-diagnosis and the bench repair procedure: `../../docs/channel13_R7_open_circuit.md`.
+diagnosis and the bench repair procedure: `../../docs/recording_rig_faults.md`.
 
 ## References
 
