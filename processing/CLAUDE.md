@@ -95,6 +95,12 @@ scanning every XDF in every sub-folder (incl. -old).
 -old folders are plain OpenBCI). EXP44's obci_eeg1 is empty (0 samples). EXP26/CTRL03
 have no EEG stream at all. Add new layout exceptions there, in one place.
 
+## docs/variants.md is GENERATED from conf/ -- never hand-edit it
+`python -m synapse_qc.variants --write` regenerates it; `--check` exits 1 if it
+has drifted from `conf/cohort/` + `conf/preprocessing/`. Run --check after
+touching either config group. The "Built" table is scanned from the outputs
+tree and is deliberately NOT part of the staleness comparison.
+
 ## THIS repo owns processing; the analysis repo only reads a finished pkl
 No pipeline imports the analysis repo at run time any more. The published
 preprocessing code is VENDORED verbatim into `synapse_qc/epoching.py`
