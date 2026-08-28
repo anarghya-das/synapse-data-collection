@@ -153,10 +153,49 @@ around the ears do not. The ear-EEG literature accordingly reads responses from
 **bipolar derivations** (contralateral, or within-grid pairs such as R2-R7),
 not from CAR.
 
-**Practical rule:** keep QC on the recorded montage. If a downstream *analysis*
-wants a different reference, apply it after bad channels have been dropped,
-interpolated or masked — which is what `finalize_dataset`'s channel strategies
-already produce.
+### Bipolar montages are also wrong for QC — for the opposite reasons
+
+Both bipolar schemes the ear-EEG literature uses were tested on the same
+recordings. Neither is usable as a QC input:
+
+| Recording | referential | CAR | contralateral (L_i-R_i) | within-grid (adjacent) |
+|---|---|---|---|---|
+| CTRL10 *(perfect)* | 0/16 | 1/16 | 1/8 | **8/14** |
+| EXP01 *(good)* | 3/16 | 2/16 | 3/8 | 4/14 |
+| EXP43 *(R07 clipping)* | 2/16 | 2/16 | 2/8 | 4/14 |
+| CTRL12 *(5 ch railing ~half)* | 6/16 | **1/16** | **2/8** | 10/14 |
+| CTRL06 *(duplicated)* | 10/16 | 6/16 | 4/8 | 7/14 |
+| EXP52 *(right grid dead)* | 9/16 | 9/16 | **1/8** | 11/14 |
+| CTRL11 *(all 16 railed)* | 16/16 | 16/16 | 8/8 | 14/14 |
+
+**Contralateral bipolar HIDES whole-grid failures.** In EXP52 the right grid
+reads zero, so `L_i - R_i = L_i - 0 = L_i` — verified bit-identical. Every
+derivation silently returns the good ear and the recording looks healthy: 9/16
+bad referentially collapses to **1/8**. A montage that reports a dead grid as
+fine is disqualifying for QC.
+
+**Within-grid bipolar OVER-flags.** A perfect recording (CTRL10, 0/16 bad
+referentially) shows **8/14** bad. Adjacent cEEGrid pads are 1-2 cm apart and see
+nearly the same potential, so their difference is small — measured on CTRL10:
+L01-L02 = 4.66 uV and L04-L05 = 6.14 uV, against referential channel SDs of
+50-68 uV. The QC's *absolute* thresholds (`flat_voltage` 0.5 uV, `sd_floor_uv`
+0.3 uV) are calibrated for referential amplitudes and misfire on derivations an
+order of magnitude smaller.
+
+**Both also propagate faults.** A bipolar derivation is bad whenever *either*
+member is bad, so one broken electrode kills every pair it appears in — the
+opposite of what a QC montage should do, which is localise a fault to one
+channel. Referential is the only montage where one bad electrode costs exactly
+one channel.
+
+**Practical rule:** keep QC on the recorded montage — it is the only one tested
+that neither hides faults (CAR, contralateral) nor over-flags healthy data
+(within-grid), and the only one where a bad electrode costs exactly one channel.
+If a downstream *analysis* wants a different reference — and a contralateral
+bipolar montage is well motivated for ear-EEG on signal grounds — apply it
+**after** bad channels have been dropped, interpolated or masked, which is what
+`finalize_dataset`'s channel strategies already produce. Re-referencing clean
+data is fine; re-referencing to *decide what is clean* is not.
 
 ## References
 
