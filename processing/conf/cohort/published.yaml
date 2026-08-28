@@ -4,8 +4,10 @@ name: published
 # Reproduction fidelity: build the published mirror from the same clinical
 # workbook the published pkl used (Apr 2026 state), NOT the newer default
 # 02_PCData.xlsx. Overrides paths.clinical_data (see build_dataset.py).
-# null => auto-detect inside the analysis repo (the filename is not
-# consistent across checkouts: '02_PC Data.xlsx' vs '02_PC Data .xlsx').
+# null => use paths.clinical_data (the current workbook). The epoch data still
+# reproduces the published pkl exactly; only the clinical_* keys differ, since
+# the workbook has grown since the paper. Set an explicit path here if you need
+# those to match the paper too.
 clinical_data: null
 exp:
   - EXP01

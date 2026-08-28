@@ -1,9 +1,11 @@
 """Build a processed-data variant: cohort (participant IDs) x preprocessing.
 
-Reuses the PUBLISHED preprocessing code from ../../synapse (process_subject /
-process_group) so a `preprocessing=published` build faithfully mirrors how
-synapse_preprocessed.pkl was made -- the comparison step then isolates real
-differences rather than reimplementation bugs.
+Uses this repo's VENDORED copy of the published preprocessing code
+(synapse_qc/process.py + synapse_qc/epoching.py), so a `preprocessing=published`
+build still faithfully mirrors how synapse_preprocessed.pkl was made --
+`pipelines/compare.py` is the regression test for that. Nothing is imported from
+the analysis repo at runtime: this repo owns processing, and the analysis repo
+only reads the finished pickle.
 
 The only thing we change from the published flow is FILE RESOLUTION: we map
 participant IDs -> XDF via synapse_qc.inventory (which correctly falls back to
@@ -27,27 +29,28 @@ from omegaconf import OmegaConf, DictConfig
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 from synapse_qc import inventory, paths as qpaths  # noqa: E402
+from synapse_qc import clinical as qclinical, process as pp  # noqa: E402
 
 warnings.filterwarnings("ignore")
 
 
-def _import_published(synapse_repo, montage_abs):
-    """Put the analysis repo on the path, import its preprocessing code, and
-    inject an absolute montage path into create_mne so it no longer depends on
-    the montage being in the current working directory."""
-    if synapse_repo not in sys.path:
-        sys.path.insert(0, synapse_repo)
-    from publication_analysis import preprocess as pp  # noqa: E402
-    from preprocessing import utils  # same module object preprocess uses
+def _patch_epoching(montage_abs):
+    """Inject the absolute montage path into the vendored ``create_mne`` so it
+    does not depend on the current working directory.
 
-    _orig = utils.create_mne
+    Note ``quality_check`` is deliberately NOT replaced here (``pair_video``
+    does replace it): this pipeline's job is a bit-faithful mirror of the
+    published pkl, which was built with the legacy metric.
+    """
+    from synapse_qc import epoching
+
+    _orig = epoching.create_mne
 
     def _create_mne_abs(*a, **k):
         k.setdefault("montage_file", montage_abs)
         return _orig(*a, **k)
 
-    utils.create_mne = _create_mne_abs   # read_data looks this up at call time
-    return pp
+    epoching.create_mne = _create_mne_abs
 
 
 def _resolve_cohort(cfg, data_root=None):
@@ -86,8 +89,7 @@ def main(cfg: DictConfig) -> None:
                  or os.path.join(base, "data"))
 
     montage_abs = os.path.join(REPO, cfg.paths.montage)
-    synapse_repo = qpaths.synapse_repo(cfg.paths.get('synapse_repo'), required=True)
-    pp = _import_published(synapse_repo, montage_abs)
+    _patch_epoching(montage_abs)
 
     # Load the (published) global event-ID map directly for consistent event codes.
     with open(os.path.join(REPO, cfg.paths.global_event_map), "rb") as f:
@@ -119,11 +121,7 @@ def main(cfg: DictConfig) -> None:
     # old ../../synapse copy for reproduction fidelity) falls back to
     # paths.clinical_data (the newer local 02_PCData.xlsx). Relative paths
     # resolve against the repo dir, not Hydra's run cwd.
-    clinical_path = cfg.cohort.get("clinical_data")
-    if clinical_path is None and cfg.cohort.name == "published":
-        # the older workbook the published pkl was built from
-        clinical_path = qpaths.published_workbook(synapse_repo)
-    clinical_path = clinical_path or cfg.paths.clinical_data
+    clinical_path = cfg.cohort.get("clinical_data") or cfg.paths.clinical_data
     if not os.path.isabs(clinical_path):
         clinical_path = os.path.join(REPO, clinical_path)
     clinical_data = pp.load_clinical_data(clinical_path, clinical_measures)
@@ -174,6 +172,15 @@ def main(cfg: DictConfig) -> None:
     with open(pkl_path, "wb") as f:
         pickle.dump(data, f)
 
+    # Date-stamped copy for the ANALYSIS repo to consume. The analysis side
+    # should only ever read a finished pickle -- it holds no processing code --
+    # so it gets a stable, self-describing filename rather than having to know
+    # this repo's variant-directory convention. See docs/dataset_handoff.md.
+    dated_name = f"synapse_preprocessed_{datetime.now():%Y-%m-%d}.pkl"
+    dated_path = os.path.join(out_dir, dated_name)
+    with open(dated_path, "wb") as f:
+        pickle.dump(data, f)
+
     manifest = {
         "product": "epochs",
         "variant": variant,
@@ -195,6 +202,7 @@ def main(cfg: DictConfig) -> None:
         "demographics_nonempty": len(demographics),
         "responses_loaded": len(responses),
         "pkl": os.path.relpath(pkl_path, base),
+        "analysis_pkl": os.path.relpath(dated_path, base),
         "pkl_mb": round(os.path.getsize(pkl_path) / 1024 / 1024, 1),
         "config": OmegaConf.to_container(cfg, resolve=True),
     }
@@ -203,6 +211,7 @@ def main(cfg: DictConfig) -> None:
 
     print("\n" + "=" * 70)
     print(f"Wrote {pkl_path}  ({manifest['pkl_mb']} MB)")
+    print(f"      {dated_path}  (for the analysis repo)")
     print(f"  EXP {len(exp['subjects'])} / CTRL {len(ctrl['subjects'])} subjects")
     print(f"  epochs/task EXP={manifest['epochs_per_task']['EXP']} "
           f"CTRL={manifest['epochs_per_task']['CTRL']}")

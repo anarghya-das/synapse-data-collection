@@ -40,47 +40,35 @@ from synapse_qc import inventory, paths as qpaths  # noqa: E402
 warnings.filterwarnings("ignore")
 
 
-def _import_utils(synapse_repo, montage_abs):
-    """Put the analysis repo on the path and patch two things into
-    ``preprocessing.utils`` (so EEG alignment does not depend on the CWD and uses
-    this repo's vetted QC). Mirrors ``build_dataset._import_published`` but only
-    needs ``preprocessing.utils``.
+def _patch_epoching(montage_abs):
+    """Point the vendored epoching code at this repo's assets and QC.
 
-    1. ``create_mne`` gets the absolute montage path injected (no CWD dependency).
-    2. ``quality_check`` is replaced by ``synapse_qc.qc_core.quality_check`` (the
-       robust, filtering-invariant method). The analysis repo's own
-       ``quality_check`` still uses the LEGACY mean-correlation rule, which flags
-       healthy ear-EEG channels sharing common-mode DC drift as bad -- on raw
-       data that over-interpolates channels and even fails whole recordings
-       (EXP08/EXP10/CTRL09/CTRL12 scored 0 under legacy but 75-100 under robust).
-       ``create_mne`` looks up ``quality_check`` as a module global, so patching
-       ``utils.quality_check`` routes bad-channel detection through the robust
-       metric. The return dict is a superset (same ``bads_combined`` /
-       ``quality_score`` keys), so ``create_mne`` consumes it unchanged. Scoped to
-       this pairing pipeline only -- ``build_dataset`` is untouched."""
-    if synapse_repo not in sys.path:
-        sys.path.insert(0, synapse_repo)
-    from preprocessing import utils  # same module av_align.align_eeg looks up
-    from synapse_qc import qc_core, published_compat
+    Two deliberate interventions, both scoped to pairing:
 
-    # 3. Older checkouts of create_mne lack channel_strategy='keep_all', which
-    #    epoch-mode pairing requires (detect-and-defer). Added only if missing.
-    #    MUST run BEFORE the montage wrapper below: the check inspects
-    #    create_mne's source, and wrapping it first would hide the real function
-    #    and make the shim install unconditionally.
-    if published_compat.ensure_keep_all(utils):
-        print("[compat] analysis repo lacks channel_strategy='keep_all'; shimmed "
-              "(see synapse_qc/published_compat.py)")
+    1. ``create_mne`` gets the absolute montage path injected, so nothing
+       depends on the current working directory.
+    2. ``quality_check`` is replaced by :func:`synapse_qc.qc_core.quality_check`
+       -- the robust, filtering-invariant, windowed metric. The vendored copy
+       still carries the LEGACY mean-correlation rule, which flags healthy
+       ear-EEG channels sharing common-mode DC drift as bad (EXP08 / EXP10 /
+       CTRL09 / CTRL12 score 0 under legacy but 75-100 under robust).
+       ``create_mne`` looks ``quality_check`` up as a module global, so
+       rebinding it here routes bad-channel detection through the robust
+       metric. The return dict is a superset, so ``create_mne`` consumes it
+       unchanged. ``build_dataset`` is deliberately left on the legacy metric,
+       because its job is a bit-faithful mirror of the published pkl.
+    """
+    from synapse_qc import epoching, qc_core
 
-    _orig = utils.create_mne
+    _orig = epoching.create_mne
 
     def _create_mne_abs(*a, **k):
         k.setdefault("montage_file", montage_abs)
         return _orig(*a, **k)
 
-    utils.create_mne = _create_mne_abs   # av_align calls utils.create_mne at run time
-    utils.quality_check = qc_core.quality_check  # robust QC (create_mne calls this)
-    return utils
+    epoching.create_mne = _create_mne_abs
+    epoching.quality_check = qc_core.quality_check
+    return epoching
 
 
 def _resolve_cohort(cfg, data_root=None):
@@ -168,9 +156,8 @@ def main(cfg: DictConfig) -> None:
                  or os.path.join(base, "data"))
 
     montage_abs = os.path.join(REPO, cfg.paths.montage)
-    synapse_repo = qpaths.synapse_repo(cfg.paths.get('synapse_repo'), required=True)
-    _import_utils(synapse_repo, montage_abs)
-    from synapse_qc import av_align  # imported after ../../synapse is on sys.path
+    _patch_epoching(montage_abs)
+    from synapse_qc import av_align
 
     pre = cfg.preprocessing
     vid = cfg.video

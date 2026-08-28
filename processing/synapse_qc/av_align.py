@@ -77,12 +77,12 @@ def align_eeg(
     which a cross-subject multimodal model needs; ``drop`` removes bad channels;
     ``zero_mask``/``keep_all`` retain the 16 channels without interpolating.
 
-    ``preprocessing.utils`` is imported here (not at module top) so that the
-    analysis repo only needs to be on ``sys.path`` by call time, and so a caller
-    that has monkeypatched ``utils.create_mne`` (to inject an absolute montage
+    ``synapse_qc.epoching`` (this repo's vendored copy of the published
+    preprocessing code) is imported here rather than at module top so that a
+    caller that has monkeypatched ``epoching.create_mne`` (to inject an absolute montage
     path) gets the patched version.
     """
-    from preprocessing import utils  # analysis-repo helpers; see module docstring
+    from . import epoching as utils  # analysis-repo helpers; see module docstring
 
     marker_data = np.atleast_1d(np.array(marker_stream["time_series"]).squeeze())
     marker_timestamps = marker_stream["time_stamps"]
@@ -124,7 +124,7 @@ def video_segments(video_stream, marker_stream, exclude_phases=None):
     after poststim in the HLT/LET tasks, not a stimulus epoch, so it is dropped
     by default.
     """
-    from preprocessing import utils
+    from . import epoching as utils
 
     exclude_phases = exclude_phases or []
     marker_data = np.atleast_1d(np.array(marker_stream["time_series"]).squeeze())

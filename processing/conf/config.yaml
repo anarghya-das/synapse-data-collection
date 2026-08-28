@@ -45,24 +45,22 @@ paths:
   data_root: null
   # Canonical recording per participant is resolved through synapse_qc.inventory,
   # so these only need to point at the shared assets and output location.
-  # Analysis repo (published preprocessing code); override per machine with
-  # $SYNAPSE_REPO when the checkout lives elsewhere.
-  synapse_repo: null   # null => auto-detect (synapse_qc.paths.synapse_repo); $SYNAPSE_REPO overrides
   global_event_map: assets/global_event_id_map.pkl
   montage: assets/ceegrid_montage_head.npz   # injected into create_mne (no CWD dependency)
   # Clinical workbook for clinical_data/clinical_scores/demographics. Relative
-  # paths resolve against this directory. Default: the NEWER workbook (last
-  # updated 2026-07; includes EXP44-47 + CTRL26-28 and the Excluded Data /
-  # per-device Questionnaires sheets). cohort=published overrides this with the
-  # older ../../synapse copy the published pkl was built from (see
-  # conf/cohort/published.yaml) so the faithful mirror stays faithful.
+  # paths resolve against this directory. Pulled from Box -- see
+  # processing/CLAUDE.md. NOTE for cohort=published: the SIGNAL reproduces the
+  # published pkl exactly (compare.py checks that), but the clinical_* keys
+  # reflect THIS workbook, which has grown since the paper was built. Point
+  # cohort.clinical_data at an older copy if you need those to match too.
   clinical_data: 02_PCData.xlsx
   # ---- Output locations (all outputs resolve as <base>/<dir>; base comes from
   # paths.root / $SYNAPSE_DATA_BASE / the repo). Change them HERE, never in code.
   output_dir: outputs/epochs        # processed Epochs pkl variants (build_dataset)
   qc_dir: outputs/qc                # quality workbook + reports (run_quality/spotcheck)
-  # The original published pkl, for the comparison step:
-  published_pkl: null   # null => <synapse_repo>/processed_data/synapse_preprocessed.pkl
+  # The original published pkl, for pipelines/compare.py. Optional: only used
+  # to regression-test the vendored code against the paper's own output.
+  published_pkl: null   # null => auto-detected in the analysis repo if present
 
 # Clinical questionnaire measures pulled per subject into clinical_scores.
 # Matches the current published col_mapping (HQ_Functional/HQ_Social); the older

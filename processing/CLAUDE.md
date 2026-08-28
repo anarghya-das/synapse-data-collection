@@ -2,12 +2,9 @@
 
 This directory (formerly the standalone `synapse-data` repo, merged into the
 collection repo via git subtree) holds the quality tooling + dataset pipelines
-for the SYNAPSE CEEGrid ear-EEG recordings. The analysis/paper code is the
-separate `synapse` repo (a sibling of the PARENT repo root, i.e. `../../synapse`
-from here; the pipelines reach it via the absolute `paths.synapse_repo` in
-`conf/config.yaml`, so cwd never matters — see its CLAUDE.md). Run everything
-from inside this directory with the `brain` conda env
-(`/Users/anarghya/miniconda3/envs/brain/bin/python`).
+for the SYNAPSE CEEGrid ear-EEG recordings. The analysis/paper code is the separate `synapse-analysis` repo; it is NOT a
+runtime dependency any more (see "THIS repo owns processing" below). Run
+everything from inside this directory.
 
 These are the things that are NOT obvious from reading the code:
 
@@ -98,10 +95,31 @@ scanning every XDF in every sub-folder (incl. -old).
 -old folders are plain OpenBCI). EXP44's obci_eeg1 is empty (0 samples). EXP26/CTRL03
 have no EEG stream at all. Add new layout exceptions there, in one place.
 
-## qc_core.py is vendored, not original
-It is a faithful copy of the QC functions in
-`../../synapse/preprocessing/utils.py`. If the upstream QC algorithm changes,
-re-sync this file; the canonical implementation lives in the analysis repo.
+## THIS repo owns processing; the analysis repo only reads a finished pkl
+No pipeline imports the analysis repo at run time any more. The published
+preprocessing code is VENDORED verbatim into `synapse_qc/epoching.py`
+(create_mne / read_data / events, from preprocessing/utils.py) and
+`synapse_qc/process.py` (process_group / responses / clinical loaders, from
+publication_analysis/preprocess.py), both from analysis-repo main @ e3aa291.
+Full rationale, the reproduction numbers, and the re-vendoring procedure:
+`docs/dataset_handoff.md`.
+
+## TWO quality_check implementations, on purpose -- do not unify them
+`epoching.quality_check` is the vendored LEGACY metric (mean-correlation on the
+unfiltered signal). It is the default because `build_dataset cohort=published`
+must mirror the published pkl, which was built with it. `qc_core.quality_check`
+is this repo's ROBUST windowed metric, used by every QC entry point, and
+`pair_video` REBINDS `epoching.quality_check` to it at run time so the
+multimodal dataset gets the corrected metric. MEASURED: putting the robust
+metric in build_dataset changes bad channels on 23/28 published subjects and
+breaks reproduction. `build_dataset` deliberately does NOT rebind.
+
+## build_dataset writes a DATED pkl for the analysis repo
+Each run writes `epochs.pkl` (canonical) AND
+`synapse_preprocessed_<YYYY-MM-DD>.pkl` (identical content) into the variant
+dir. The analysis side points at the dated one, so provenance is in the
+filename and successive builds do not overwrite each other. Schema unchanged --
+same 16 top-level keys.
 
 ## The prior hand ratings are intentionally NOT in this repo
 `../../synapse/participant_info.tsv` has manual Excellent/Good/Average/Bad ratings.

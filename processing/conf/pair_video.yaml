@@ -44,8 +44,6 @@ paths:
   # Also honored via $SYNAPSE_DATA_BASE. Raw recordings: $SYNAPSE_DATA_ROOT / data_root.
   root: null
   data_root: null                                            # explicit raw dir; null => <root>/data
-  # Analysis repo (published EEG-alignment helpers); $SYNAPSE_REPO overrides.
-  synapse_repo: null   # null => auto-detect (synapse_qc.paths.synapse_repo); $SYNAPSE_REPO overrides
   montage: assets/ceegrid_montage_head.npz                   # injected into create_mne (no CWD dependency)
   # Output location (resolves as <base>/<dir>). Change it HERE, never in code.
   paired_dir: outputs/multimodal/paired

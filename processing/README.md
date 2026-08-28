@@ -31,15 +31,10 @@ editing code — point the tooling at the base dir. The published copy of `data/
 
 ### Environment
 
-The pipelines need two things besides this repo:
+The pipelines are **self-contained** — no pipeline imports the analysis repo.
+The published preprocessing code is vendored into `synapse_qc/epoching.py` and
+`synapse_qc/process.py` (see `docs/dataset_handoff.md`). One optional external:
 
-- **The analysis repo** (`publication_analysis/` + `preprocessing/`), reused live
-  for the published preprocessing code. It is **auto-detected** in the usual
-  sibling layouts (`../synapse-analysis`, `../synapse`) — nothing is hardcoded to
-  one machine. Override with `$SYNAPSE_REPO` or `paths.synapse_repo=...`; add new
-  layouts to `synapse_qc.paths._SYNAPSE_REPO_CANDIDATES`. Checkouts differ, so
-  `synapse_qc/published_compat.py` patches over gaps (currently: older
-  `create_mne` lacking `channel_strategy='keep_all'`, which pairing requires).
 - **`opencv-python`** for the video half of `pair_video` (EEG-only runs with
   `video.no_video=true` do not need it). On the lab server `/home` is full, so it
   is installed outside it:
