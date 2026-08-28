@@ -63,6 +63,15 @@ def _import_utils(synapse_repo, montage_abs):
     from preprocessing import utils  # same module av_align.align_eeg looks up
     from synapse_qc import qc_core, published_compat
 
+    # 3. Older checkouts of create_mne lack channel_strategy='keep_all', which
+    #    epoch-mode pairing requires (detect-and-defer). Added only if missing.
+    #    MUST run BEFORE the montage wrapper below: the check inspects
+    #    create_mne's source, and wrapping it first would hide the real function
+    #    and make the shim install unconditionally.
+    if published_compat.ensure_keep_all(utils):
+        print("[compat] analysis repo lacks channel_strategy='keep_all'; shimmed "
+              "(see synapse_qc/published_compat.py)")
+
     _orig = utils.create_mne
 
     def _create_mne_abs(*a, **k):
@@ -71,11 +80,6 @@ def _import_utils(synapse_repo, montage_abs):
 
     utils.create_mne = _create_mne_abs   # av_align calls utils.create_mne at run time
     utils.quality_check = qc_core.quality_check  # robust QC (create_mne calls this)
-    # 3. Older checkouts of create_mne lack channel_strategy='keep_all', which
-    #    epoch-mode pairing requires (detect-and-defer). Added only if missing.
-    if published_compat.ensure_keep_all(utils):
-        print("[compat] analysis repo lacks channel_strategy='keep_all'; shimmed "
-              "(see synapse_qc/published_compat.py)")
     return utils
 
 
