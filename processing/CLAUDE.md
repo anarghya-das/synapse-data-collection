@@ -44,6 +44,22 @@ docs/QC_grade_bands_review.md. Presets scale: strict 5%, default 10%, lenient 20
 Use *max* inter-channel correlation, not mean: ear-EEG channels are weakly correlated
 with the contralateral ear, so a healthy channel's MEAN correlation is naturally low.
 
+## Duplicate-channel detection runs on RAW, never on the filtered copy
+`find_duplicate_channels` flags pairs at |r| >= 0.9999 as the SAME signal (one
+is not real data) and scores the later one bad. It MUST use the unfiltered
+signal: band-passing strips the shared DC/drift and relatively amplifies each
+ADC's own noise, which collapses the separation. Measured here: duplicated
+recordings sit at exactly 1.000000 raw vs <=0.997 healthy, but after 1-50 Hz
+CTRL27 (duplicated) falls to 0.984 -- BELOW CTRL10 (healthy, 0.9996). Caught 7
+recordings; EXP47/CTRL27/CTRL06 lose whole blocks. See docs/recording_rig_faults.md.
+
+## R07 is excluded from the quality_score denominator (not from bads_combined)
+`exclude_from_score: ['R07']` in every preset. R07 is a RIG fault (open circuit,
+88% of recordings), so charging every participant 6.25 points for it is wrong.
+It is still detected, still in `bad_channels`, and still dropped/masked
+downstream -- only the SCORE ignores it, over `n_scored`=15. REMOVE this once
+the hardware is repaired, else a regression stays hidden.
+
 ## quality_score is "% channels surviving QC", not signal fidelity
 It is `100·(1 − n_bad/16)`. A clean recording with one dead electrode is 94, not a
 statement about SNR. Don't over-read small differences.

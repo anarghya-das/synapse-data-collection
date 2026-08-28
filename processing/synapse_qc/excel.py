@@ -66,7 +66,9 @@ def write_workbook(summary_rows, channel_rows, out_path, run_meta=None):
         "participant", "group", "device", "devices_present",
         "auto_grade", "quality_score",
         "score_filtered", "stream_note",
-        "n_bad", "n_flat", "n_var", "n_noisy", "n_corr", "n_highcorr",
+        "n_bad", "n_scored", "excluded_from_score",
+        "n_duplicate", "duplicate_channels", "duplicate_pairs", "max_pair_corr",
+        "n_flat", "n_var", "n_noisy", "n_corr", "n_highcorr",
         "bad_channels", "flat_channels", "dead_channels", "noisy_channels",
         "corr_channels", "highcorr_channels",
         "ear_asymmetry", "mean_snr", "min_snr", "mean_corr",
@@ -132,6 +134,15 @@ def _legend_frame(meta):
         ["ear_asymmetry", "|Lvar - Rvar| / (Lvar + Rvar); 0=symmetric, 1=fully asymmetric"],
         ["mean_snr / min_snr", "per-channel peak-to-peak / MAD, summarised"],
         ["mean_corr", "grand mean of per-channel mean inter-channel correlation (reporting)"],
+        ["n_duplicate", "channels carrying the SAME signal as an earlier channel "
+                        "(|r| >= duplicate_corr) -- NOT independent data; scored BAD"],
+        ["duplicate_pairs", "the offending pairs and their correlation"],
+        ["max_pair_corr", "largest |r| between any two live channels (1.0 => duplication)"],
+        ["excluded_from_score", "known-faulty RIG channels: still detected and listed in "
+                                "bad_channels, but excluded from the quality_score "
+                                "denominator so a hardware defect is not charged to the "
+                                "participant (see docs/recording_rig_faults.md)"],
+        ["n_scored", "channels the quality_score is computed over (16 minus excluded)"],
         ["max_corr_bad_frac", "worst channel's fraction of 1-s windows below corr_low "
                               "(PREP-style windowed criterion; bad if > corr_bad_time_frac)"],
         ["n_corr_windows", "number of 1-s windows the correlation criterion scored"],

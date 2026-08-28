@@ -186,6 +186,13 @@ def analyse_one(p, preset, method="robust"):
         "mean_snr": round(float(np.mean(snr)), 1),
         "min_snr": round(float(np.min(snr)), 1),
         "mean_corr": round(float(np.nanmean(mean_corr)), 3),
+        "n_duplicate": len(qc.get("bads_duplicate", [])),
+        "duplicate_channels": _join(sorted(qc.get("bads_duplicate", []))),
+        "duplicate_pairs": "; ".join(f"{a}={b}(r={r:.5f})"
+                                     for a, b, r in qc.get("duplicate_pairs", [])[:8]),
+        "max_pair_corr": round(float(qc.get("max_pair_corr", np.nan)), 5),
+        "excluded_from_score": _join(qc.get("excluded_from_score", [])),
+        "n_scored": qc.get("n_scored", np.nan),
         "max_corr_bad_frac": (round(float(np.nanmax(corr_bad_frac)), 3)
                               if corr_bad_frac.size else np.nan),
         "n_corr_windows": qc.get("n_corr_windows", 0),
@@ -198,6 +205,7 @@ def analyse_one(p, preset, method="robust"):
     base["auto_grade"] = excel.auto_grade(qc["quality_score"], "ok")
 
     # Per-channel long rows (RAW / canonical stream).
+    dup = set(qc.get("bads_duplicate", []))
     flat = set(qc["bads_flat"])
     dead = set(qc["bads_variance"])
     noisy = set(qc.get("bads_noisy", []))
@@ -216,6 +224,8 @@ def analyse_one(p, preset, method="robust"):
             flags.append("lowcorr")
         if ch in highcorr:
             flags.append("bridge?")
+        if ch in set(qc.get("bads_duplicate", [])):
+            flags.append("DUPLICATE")
         ch_rows.append({
             "participant": p.pid,
             "group": p.group,
@@ -227,6 +237,8 @@ def analyse_one(p, preset, method="robust"):
             "mean_corr": round(float(mean_corr[i]), 3) if not np.isnan(mean_corr[i]) else np.nan,
             "corr_bad_frac": (round(float(corr_bad_frac[i]), 3)
                               if i < corr_bad_frac.size else np.nan),
+            "duplicate": ch in set(qc.get("bads_duplicate", [])),
+            "scored": ch not in set(qc.get("excluded_from_score", [])),
             "snr": round(float(snr[i]), 1),
         })
 

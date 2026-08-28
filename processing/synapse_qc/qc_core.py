@@ -52,6 +52,12 @@ CEEGRID_QUALITY_PRESETS = {
                                                  # docs/QC_grade_bands_review.md.
         'corr_high_report': 0.999,               # near-identical pair REPORTED as possible bridging (not scored)
         'z_thresh': 3.0,                         # |robust z| (median/MAD) on log-variance (FASTER-style)
+        'duplicate_corr': 0.9999,                # |r| at/above this = the SAME signal, not real data
+        # Known-faulty rig channels: still detected and reported, but excluded
+        # from the quality_score denominator so a hardware defect is not charged
+        # to every participant. R07 (OpenBCI ch13 / Daisy input 5) is an open
+        # circuit in 88% of recordings -- see docs/recording_rig_faults.md.
+        'exclude_from_score': ['R07'],
     },
     'strict': {
         'flat_voltage': 0.3,
@@ -65,6 +71,8 @@ CEEGRID_QUALITY_PRESETS = {
         'corr_bad_time_frac': 0.05,
         'corr_high_report': 0.998,
         'z_thresh': 2.5,
+        'duplicate_corr': 0.9999,
+        'exclude_from_score': ['R07'],
     },
     'lenient': {
         'flat_voltage': 1.0,
@@ -78,6 +86,8 @@ CEEGRID_QUALITY_PRESETS = {
         'corr_bad_time_frac': 0.20,
         'corr_high_report': 0.9995,
         'z_thresh': 3.5,
+        'duplicate_corr': 0.9999,
+        'exclude_from_score': ['R07'],
     },
 }
 
@@ -286,6 +296,43 @@ def windowed_max_corr(data, sfreq, window_s=1.0):
     return np.nan_to_num(max_corr, nan=0.0, posinf=0.0, neginf=0.0), n_win
 
 
+def find_duplicate_channels(data, ch_names, thresh=0.9999):
+    """Channel pairs carrying the same signal (|r| >= ``thresh``).
+
+    A duplicated channel is not merely correlated with a neighbour -- it is not
+    independent data at all. It happens when two ADC inputs sample the same
+    physical electrodes (a wiring fault) or when an absent Daisy board is
+    back-filled with a copy of the Cyton block. Two SYNAPSE recordings (EXP47,
+    CTRL27) have every left/right pair at r ~ 1.000000 at unity scale, i.e. half
+    the montage is fake, and both passed QC before this check existed.
+
+    Returns ``(pairs, dup_channels, max_pair_corr)``:
+      * ``pairs``        - [(chA, chB, r), ...] sorted by |r| descending
+      * ``dup_channels`` - the LATER channel of each pair (the first occurrence
+        is kept as the real one; which is physically real cannot be known from
+        the file, so this is a convention, not a claim)
+      * ``max_pair_corr`` - the largest |off-diagonal r| seen (0.0 if < 2 live)
+    """
+    sd = data.std(axis=1)
+    live = [i for i in range(len(ch_names)) if sd[i] > 0]
+    if len(live) < 2:
+        return [], [], 0.0
+    c = np.corrcoef(data[live])
+    np.fill_diagonal(c, np.nan)
+    with np.errstate(invalid='ignore'):
+        max_corr = float(np.nanmax(np.abs(c))) if c.size > 1 else 0.0
+    pairs, dup = [], []
+    for a in range(len(live)):
+        for b in range(a + 1, len(live)):
+            r = c[a, b]
+            if np.isfinite(r) and abs(r) >= thresh:
+                pairs.append((ch_names[live[a]], ch_names[live[b]], float(r)))
+                if ch_names[live[b]] not in dup:
+                    dup.append(ch_names[live[b]])
+    pairs.sort(key=lambda t: -abs(t[2]))
+    return pairs, dup, max_corr
+
+
 def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=False,
                   tmin=None, tmax=None, events=None, event_margin=10.0,
                   preset='default', bad_percent=None, sd_floor_uv=None,
@@ -465,7 +512,19 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         plt.tight_layout()
         plt.show()
 
-    bads_custom = set(bads_flat) | set(bads_variance) | set(bads_corr) | set(bads_noisy)
+    # Duplicate channels: not independent data, so they are bad by definition.
+    # NB run this on the UNFILTERED signal. Band-passing removes the shared DC/
+    # drift component and relatively amplifies each ADC's own noise, which
+    # destroys the separation: measured over this dataset, duplicated recordings
+    # sit at exactly 1.000000 raw versus <= 0.997 for healthy ones, but after a
+    # 1-50 Hz band-pass CTRL27 (duplicated) falls to 0.984 -- BELOW CTRL10
+    # (healthy, 0.9996). Raw is the only place the two classes separate.
+    dup_thresh = config.get('duplicate_corr', 0.9999)
+    dup_pairs, bads_duplicate, max_pair_corr = find_duplicate_channels(
+        raw_qc.get_data(), ch_names_qc, thresh=dup_thresh)
+
+    bads_custom = (set(bads_flat) | set(bads_variance) | set(bads_corr)
+                   | set(bads_noisy) | set(bads_duplicate))
 
     # Robust SNR estimate (peak-to-peak / MAD) on the same data the criteria used.
     mad_per_channel = median_abs_deviation(data_qc, axis=1)
@@ -483,8 +542,18 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         ear_asymmetry = None
 
     n_channels = len(raw_qc.ch_names)
+
+    # Channels excluded from the SCORE (not from bads_combined -- downstream
+    # still needs to drop/mask them). These are known-faulty rig channels whose
+    # failure says nothing about a participant's data quality; counting them
+    # would charge every subject for one hardware defect. See
+    # docs/recording_rig_faults.md.
+    excluded = [c for c in config.get('exclude_from_score', []) if c in ch_names_qc]
     n_bad = len(bads_custom)
-    quality_score = 100 * (1 - n_bad / n_channels)
+    scored_names = [c for c in ch_names_qc if c not in excluded]
+    n_scored = len(scored_names) or n_channels
+    n_bad_scored = len([c for c in bads_custom if c not in excluded])
+    quality_score = 100 * (1 - n_bad_scored / n_scored)
 
     if verbose:
         print(f"[quality_check] Quality score: {quality_score:.0f}/100 ({n_bad}/{n_channels} bad channels)")
@@ -500,6 +569,12 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         'bads_corr': bads_corr,
         'bads_highcorr': bads_highcorr,
         'bads_combined': list(bads_custom),
+        'bads_duplicate': list(bads_duplicate),
+        'duplicate_pairs': dup_pairs,
+        'max_pair_corr': max_pair_corr,
+        'excluded_from_score': list(excluded),
+        'n_scored': int(n_scored),
+        'n_bad_scored': int(n_bad_scored),
         'variances': variances,
         'variance_threshold': float(variance_threshold),
         'ch_sd_uv': sd_uv,

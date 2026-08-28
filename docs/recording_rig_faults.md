@@ -163,9 +163,35 @@ is **reported, never scored** — and for CTRL27 it did not fire at all.
 Do not use their right-grid channels. Re-check any session recorded between
 2026-06-20 and 2026-06-30.
 
-**Code follow-up:** promote duplicate detection to a scored, blocking check —
-any pair at |r| > 0.9999 on the raw stream means one channel is not real data.
-A whole-grid duplication should fail the recording outright.
+**Now implemented.** `qc_core.find_duplicate_channels` flags any pair at
+|r| >= `duplicate_corr` (0.9999) and scores the later channel of each pair as
+bad. **It must run on the UNFILTERED signal** — band-passing removes the shared
+DC/drift component and relatively amplifies each ADC's own noise, destroying the
+separation. Measured across this dataset:
+
+| | duplicated | healthy |
+|---|---|---|
+| max \|r\| on raw | **1.000000** | <= 0.997 |
+| max \|r\| after 1-50 Hz | 0.984 (CTRL27) | 0.9996 (CTRL10) |
+
+After band-passing, a duplicated recording scores *lower* than a healthy one.
+Raw is the only place the two classes separate.
+
+**Seven recordings carry duplicated channels** (2026-08-28 run):
+
+| Recording | dup channels | grade before -> after |
+|---|---|---|
+| EXP47 | R02,R04,R05,R07,R08,R09,R10 | Good 87.5 -> **Bad 46.7** |
+| CTRL27 | R01,R02,R04,R05,R07,R10 | Average 62.5 -> **Bad 46.7** |
+| CTRL06 | L05,R04,R05,R08 | -> Bad 40.0 |
+| CTRL14 | L10,R10 | Bad 0 (already dead) |
+| EXP06 | L10 | Average 60.0 |
+| EXP08 | R08 | Average 73.3 |
+| CTRL12 | L08 | Average 66.7 |
+
+EXP47, CTRL27 and CTRL06 lose whole blocks and should be excluded or treated as
+reduced-channel recordings. The single-channel cases (EXP06, EXP08, CTRL12) are
+one duplicated pad each, now correctly scored bad.
 
 ---
 
@@ -323,6 +349,23 @@ is, there is a bridge as well as an open.
   reference design warns against rubbing the pads or using chemicals on grids
   intended for reuse.
 
+## Current QC results (2026-08-28 run, all 54 participants)
+
+With the windowed correlation criterion, duplicate detection, and R07 excluded
+from the score:
+
+| | count |
+|---|---|
+| Excellent | 5 |
+| Good | 22 |
+| Average | 8 |
+| Bad | 15 |
+| No EEG / empty / other device | 4 |
+
+Median score 80.0, mean 66.7, computed over `n_scored` = 15 channels.
+Cohort under the study's own rule (>= 4 good channels): **28 EXP / 15 CTRL = 43**.
+At a score >= 60 quality bar: 25 EXP / 10 CTRL = 35.
+
 ## 6. Verify the fix
 
 Record 2-3 minutes with the grid on, then from `processing/`:
@@ -347,10 +390,14 @@ near zero nor in the hundreds.
   runs before LabRecorder starts and is deliberately numpy-only; a "no channel
   sitting at +/- full scale" test fits it cleanly and would have caught this on
   day one instead of eighteen months later.
-- **Consider excluding channel 13 from the quality-score denominator** while the
-  fault is live. `quality_score = 100 x (1 - n_bad/16)` currently charges every
-  subject 6.25 points for a rig fault; scoring over the 15 working channels
-  raises the mean score of affected recordings from 73.8 to 78.7.
+- **Channel 13 is now excluded from the quality-score denominator.**
+  `exclude_from_score: ['R07']` in every preset in `qc_core.py`. R07 is still
+  detected, still listed in `bad_channels`, and still dropped/masked downstream
+  — it is only removed from the SCORE, so a rig defect is not charged to every
+  participant. The workbook records `n_scored` (15) and `excluded_from_score`
+  for transparency. **Remove this exclusion once the fault is repaired**, and
+  re-run `run_quality.py`; leaving it in place after a fix would hide a
+  regression.
 
 ## References
 
