@@ -60,6 +60,20 @@ It is still detected, still in `bad_channels`, and still dropped/masked
 downstream -- only the SCORE ignores it, over `n_scored`=15. REMOVE this once
 the hardware is repaired, else a regression stays hidden.
 
+## Never re-reference before QC (and the pipeline never re-references at all)
+`grep set_eeg_reference` over the tree returns nothing: QC, epoching and dataset
+building all run on the RECORDED montage (REF = L6, single electrode, left
+grid). Keep it that way. Measured: a common-average reference HIDES bad channels
+because the average is contaminated by them and each bad channel then receives
+the negated average, which looks like EEG. CTRL12 goes 66.7 -> a PERFECT 100
+under CAR while the 5 channels it masks are railing for 44-49% of the recording.
+EXP52's 8 zero channels all become the same negated average, so they correlate
+perfectly with each other and pass. This is why PREP detects bad channels FIRST,
+then estimates a robust average reference excluding them. CAR is also dubious for
+cEEGrid regardless -- 16 electrodes in two ear clusters do not approximate the
+closed surface CAR assumes, which is why the ear-EEG literature uses BIPOLAR
+derivations. Details: docs/QC_methodology_review.md.
+
 ## quality_score is "% channels surviving QC", not signal fidelity
 It is `100·(1 − n_bad/16)`. A clean recording with one dead electrode is 94, not a
 statement about SNR. Don't over-read small differences.

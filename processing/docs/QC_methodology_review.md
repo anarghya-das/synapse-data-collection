@@ -105,6 +105,59 @@ its corrupted filtered stream is still caught (by low-correlation, correctly). T
 filtering-invariant, though it is worth keeping for one validation run to confirm
 convergence.
 
+
+## Referencing: QC must run on the RECORDED montage, never after re-referencing
+
+The pipeline does not re-reference anywhere — `grep set_eeg_reference` over the
+whole tree returns nothing — so QC, epoching and dataset building all operate on
+the recorded referential montage (REF = L6, a single electrode on the left
+grid). That is deliberate, and it matters more than it looks.
+
+**Re-referencing to a common average (CAR) systematically HIDES bad channels.**
+Measured directly, referential vs CAR on the same recordings:
+
+| Recording | referential | after CAR | channels CAR hides |
+|---|---|---|---|
+| CTRL12 | 66.7 (6 bad) | **100.0 (1 bad)** | L01, L02, L08, R02, R04 |
+| CTRL06 | 40.0 (10 bad) | 60.0 (6 bad) | L08, L09, R04, R07 |
+| EXP43 | 93.3 (2 bad) | 86.7 | R07 (the railed channel) |
+| EXP01 | 86.7 (3 bad) | 86.7 | L07, R07 |
+| EXP52 | 46.7 (9 bad) | 46.7 | L01 |
+
+CTRL12 is the clearest case: under CAR it scores a **perfect 100**, yet the five
+channels CAR masks are railing at the ADC limit for **44-49 % of the recording**
+(L01 43.7 %, L02 49.1 %, R02 48.2 %, R04 49.3 %). That is a false pass on a
+recording that is genuinely half-broken.
+
+The mechanism is the standard average-reference contamination problem, in both
+directions at once:
+
+1. The average is computed *including* the bad channels, so their railed or dead
+   content is injected into every good channel.
+2. Each bad channel then has that average subtracted, so a dead or constant
+   channel becomes `constant - mean(others)` = the negated average — which looks
+   like plausible EEG and no longer trips the flat/dead criteria.
+
+EXP52 shows (2) starkly: its 8 zero-valued right channels all become the *same*
+negated average, so they end up perfectly correlated with each other and sail
+through the correlation criterion (mean `corr_bad_frac` 0.558 -> 0.030).
+
+This is exactly why **PREP detects bad channels first and only then estimates a
+*robust* average reference** with those channels excluded, iterating. Referencing
+before detection inverts the logic.
+
+**Separately, CAR is questionable for cEEGrid at all.** The average-reference
+approximation assumes electrodes sample a closed surface so their mean
+approximates a neutral potential. Sixteen electrodes in two tight clusters
+around the ears do not. The ear-EEG literature accordingly reads responses from
+**bipolar derivations** (contralateral, or within-grid pairs such as R2-R7),
+not from CAR.
+
+**Practical rule:** keep QC on the recorded montage. If a downstream *analysis*
+wants a different reference, apply it after bad channels have been dropped,
+interpolated or masked — which is what `finalize_dataset`'s channel strategies
+already produce.
+
 ## References
 
 - Bigdely-Shamlo, N., Mullen, T., Kothe, C., Su, K.-M., & Robbins, K. (2015). The PREP
