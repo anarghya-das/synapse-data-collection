@@ -142,6 +142,16 @@ from the repo checkout.
   around this by monkeypatching `utils.create_mne` to inject the absolute `assets/` path
   (so there is NO montage file required in CWD — don't re-add one).
 
+## The clinical workbook comes from Box — re-pull it, do not hand-edit
+`processing/02_PCData.xlsx` is a copy of
+`box:AudioSight Study/01_Participant Data/02_PC Data .xlsx` (note the space in
+the Box filename). The study coordinator updates it there, so refresh with
+`rclone copy "box:AudioSight Study/01_Participant Data/02_PC Data .xlsx" .`
+and rename. Last pulled 2026-08-28 (Box mtime 10:43): added EXP20's
+demographics + audiometry (0 -> 75 fields) and 2 fields for EXP53, no existing
+values changed. That closed the last gap -- all 43 cohort subjects now have
+clinical data. Re-run finalize (or just `_write_clinical`) after a pull.
+
 ## Two clinical workbooks — the choice is per-cohort, on purpose
 `02_PCData.xlsx` (here, updated 2026-07 by the study coordinator) is the NEWER
 workbook: adds EXP44-47 + CTRL26-28, splits questionnaires per device, and moves
