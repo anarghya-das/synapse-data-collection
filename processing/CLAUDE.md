@@ -30,6 +30,17 @@ computes criteria on the UNFILTERED signal — kept only for comparison. The leg
 correlation bound (high=0.85) flags common-mode DC drift as bad, scoring whole
 recordings 0 even when every channel is healthy (CTRL09: legacy 0, robust 81). The
 redesign rationale + citations (PREP, FASTER) are in `docs/QC_methodology_review.md`.
+The correlation criterion is WINDOWED (PREP-style): max |off-diag| corr per 1-s
+window, channel bad when it fails in > `corr_bad_time_frac` of windows. WHY the
+default is 10% and not PREP's 1%: PREP is calibrated on artifact-free scalp EEG.
+cEEGrid sits over jaw/facial muscle, so healthy channels briefly decorrelate
+during clenching/chewing; at 1% this flags 233/800 channels (29%), drops the
+median score 75 -> 53, and pushes CTRL02+EXP02 out of the cohort. At 10% the
+cohort and median score are UNCHANGED vs the old whole-recording criterion while
+still catching the 19 intermittent-dropout channels it missed (e.g. EXP52, whose
+entire right grid reads corr_bad_frac = 1.0). Empirics in
+docs/QC_grade_bands_review.md. Presets scale: strict 5%, default 10%, lenient 20%.
+
 Use *max* inter-channel correlation, not mean: ear-EEG channels are weakly correlated
 with the contralateral ear, so a healthy channel's MEAN correlation is naturally low.
 

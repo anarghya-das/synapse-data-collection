@@ -77,8 +77,13 @@ as **bad** if any criterion trips:
 | flat | amplitude below `flat_voltage` for > `bad_percent` of the time | 0.5 µV / 30 % |
 | dead | SD below a floor | 0.3 µV |
 | noisy | robust z (median/MAD) of log-variance is a high outlier | z > 3 |
-| corr | **max** correlation with any other channel below `corr_low` (disconnected) | 0.40 |
+| corr | **max** correlation with any other channel below `corr_low` in more than `corr_bad_time_frac` of 1-s windows (disconnected / intermittently detached) | 0.40 / 10 % |
 
+The correlation criterion is **windowed** (PREP-style): the max |off-diagonal| correlation is
+scored in 1-s windows and a channel is bad when it fails in > 10 % of them, so an electrode
+that detaches part-way through is caught rather than averaged away. PREP's own 1 % bound is
+calibrated on artifact-free scalp EEG and is far too strict here (cEEGrid picks up jaw/facial
+EMG that briefly decorrelates healthy channels) — see `docs/QC_grade_bands_review.md`.
 High correlation (`n_highcorr`, possible electrode bridging ≥ 0.999) is **reported but
 not scored**. `quality_score = 100 × (1 − n_bad / n_channels)`. Auto-grade: Excellent
 ≥95, Good 80–94, Average 60–79, Bad <60.
@@ -95,10 +100,16 @@ legacy, 81 under robust).
 | Definition | EXP | CTRL | Total |
 |---|---|---|---|
 | **Published cohort** (legacy QC, as-shipped in `../../synapse`) | 18 | 10 | 28 |
-| **Corrected, lenient bar** (robust QC, ≥4 good channels = the study's own rule) | **24** | **12** | **36** |
-| Corrected, quality bar (robust QC, score ≥ 60 = ≥10 good channels) | 22 | 8–9 | 30–31 |
+| **Corrected, lenient bar** (robust QC, ≥4 good channels = the study's own rule) | **28** | **15** | **43** |
+| Corrected, quality bar (robust QC, score ≥ 60 = ≥10 good channels) | 25 | 12 | 37 |
 
-**Recommended cohort: 24 EXP / 12 CTRL** (robust QC at the study's own inclusion bar).
+**Recommended cohort: 28 EXP / 15 CTRL** (robust QC at the study's own inclusion bar).
+
+> Counts as of the 2026-08-28 QC run (all 54 participants on disk, windowed
+> correlation criterion). `conf/cohort/usable.yaml` still lists the older
+> 24 + 12 set — it has **not** been auto-updated, because adding subjects means
+> re-running `pair_video` for them. The subjects it is missing are EXP43, EXP52,
+> EXP53 (never scored before this run) plus EXP47, CTRL26, CTRL27, CTRL28.
 
 The published set is **18 EXP + 10 CTRL** (authoritative list in
 `../../synapse/processed_data/synapse_preprocessed.pkl`, keys `exp_subjects` /
@@ -115,7 +126,9 @@ the corrected metric:
 
 **Hard-excluded either way (11):** EXP12, EXP14, CTRL11, CTRL13, CTRL14, CTRL15, CTRL16
 (all 16 channels dead); EXP26, CTRL03 (no EEG stream); EXP44 (empty stream); EXP32
-(Neurable — not OpenBCI-scorable).
+(Neurable — not OpenBCI-scorable). Note EXP52 passes the lenient bar but only
+just: its **entire right grid is dead** (8/8 channels, `corr_bad_frac = 1.0` —
+the right cEEGrid never made contact), so it is left-ear-only data.
 
 > These are **whole-recording** counts. Per-task usability (PMT/LET/HLT/AST) will be lower
 > for subjects missing a specific task and is a separate check (not yet implemented).

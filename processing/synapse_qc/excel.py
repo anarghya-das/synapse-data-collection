@@ -70,6 +70,7 @@ def write_workbook(summary_rows, channel_rows, out_path, run_meta=None):
         "bad_channels", "flat_channels", "dead_channels", "noisy_channels",
         "corr_channels", "highcorr_channels",
         "ear_asymmetry", "mean_snr", "min_snr", "mean_corr",
+        "max_corr_bad_frac", "n_corr_windows",
         "n_channels", "duration_s", "sfreq", "method",
         "has_eeg", "has_filtered", "n_bad_filtered",
         "has_responses", "has_video", "n_pdfs",
@@ -131,6 +132,9 @@ def _legend_frame(meta):
         ["ear_asymmetry", "|Lvar - Rvar| / (Lvar + Rvar); 0=symmetric, 1=fully asymmetric"],
         ["mean_snr / min_snr", "per-channel peak-to-peak / MAD, summarised"],
         ["mean_corr", "grand mean of per-channel mean inter-channel correlation (reporting)"],
+        ["max_corr_bad_frac", "worst channel's fraction of 1-s windows below corr_low "
+                              "(PREP-style windowed criterion; bad if > corr_bad_time_frac)"],
+        ["n_corr_windows", "number of 1-s windows the correlation criterion scored"],
         ["session", "sub-folder used; old_only/neurable flag non-standard picks"],
         ["", ""],
         ["Thresholds (preset values)", ""],

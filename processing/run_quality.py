@@ -158,6 +158,7 @@ def analyse_one(p, preset, method="robust"):
     ch_names = qc["ch_names"]
     snr = np.asarray(qc["snr_estimate"], dtype=float)
     mean_corr = np.asarray(qc["mean_corr"], dtype=float)
+    corr_bad_frac = np.asarray(qc.get("corr_bad_frac", []), dtype=float)
     # "corr-dominated" = the correlation criterion flagged more channels than the
     # flat + dead criteria combined (signature of removable common-mode drift).
     raw_corr_dominated = len(qc["bads_corr"]) > (len(qc["bads_flat"]) + len(qc["bads_variance"]))
@@ -185,6 +186,9 @@ def analyse_one(p, preset, method="robust"):
         "mean_snr": round(float(np.mean(snr)), 1),
         "min_snr": round(float(np.min(snr)), 1),
         "mean_corr": round(float(np.nanmean(mean_corr)), 3),
+        "max_corr_bad_frac": (round(float(np.nanmax(corr_bad_frac)), 3)
+                              if corr_bad_frac.size else np.nan),
+        "n_corr_windows": qc.get("n_corr_windows", 0),
         "method": qc.get("method", method),
         "has_filtered": filt_stream is not None,
         "score_filtered": score_filt,
@@ -221,6 +225,8 @@ def analyse_one(p, preset, method="robust"):
             "variance": float(qc["variances"][i]),
             "sd_uv": round(float(qc["ch_sd_uv"][i]), 4),
             "mean_corr": round(float(mean_corr[i]), 3) if not np.isnan(mean_corr[i]) else np.nan,
+            "corr_bad_frac": (round(float(corr_bad_frac[i]), 3)
+                              if i < corr_bad_frac.size else np.nan),
             "snr": round(float(snr[i]), 1),
         })
 

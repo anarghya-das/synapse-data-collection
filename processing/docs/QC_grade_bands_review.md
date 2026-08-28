@@ -68,12 +68,34 @@ Observed distribution (n=47 scored): Excellent 3, Good 15, Average 15, Bad 14
 
 ## Two implementation gaps vs the cited standards
 
-- **Correlation is not windowed.** PREP flags a channel when its correlation is
-  below ~0.4 **in >1 % of 1-second windows**; `qc_core.quality_check` computes a
-  single max off-diagonal correlation over the *whole* recording. An electrode
-  that detaches partway through can keep a whole-recording correlation above
-  0.4 and pass. `QC_methodology_review.md` recommended a "windowed-max" but the
-  implementation is unwindowed. **This is the one substantive fix.**
+- ~~**Correlation is not windowed.**~~ **FIXED** (2026-08-28). PREP flags a
+  channel when its correlation is below ~0.4 **in >1 % of 1-second windows**;
+  `quality_check` previously computed a single max off-diagonal correlation over
+  the *whole* recording, so an electrode that detached partway through could keep
+  its whole-recording correlation above 0.4 and pass. `qc_core.windowed_max_corr`
+  now scores each 1-s window and flags on the fraction that fail.
+
+  **Calibration (empirical, n=51 recordings / 800 channels).** PREP's 1 % bound is
+  calibrated on artifact-free scalp EEG and does not transfer: cEEGrid sits over
+  jaw/facial muscle, so healthy channels briefly decorrelate during
+  clenching/chewing. Measured effect of `corr_bad_time_frac`:
+
+  | frac | channels flagged | median score | cohort |
+  |---|---|---|---|
+  | 1 % (PREP) | 233 / 800 (29 %) | 53.1 | **loses CTRL02, EXP02** |
+  | 5 % | 109 (14 %) | 68.8 | unchanged |
+  | **10 % (default)** | **75 (9 %)** | **75.0 (= old)** | **unchanged** |
+  | 20 % | 49 (6 %) | 75.0 | unchanged |
+  | old (whole-recording) | 83 (10 %) | 75.0 | — |
+
+  At 10 % the cohort and median score are unchanged versus the old criterion,
+  while the windowing catches **19 channels it missed** across 11 recordings —
+  most strikingly EXP52, whose entire right grid (8 channels) reads
+  `corr_bad_frac = 1.0` (the right cEEGrid never made contact) but scored only
+  1 bad channel under whole-recording correlation. It also *clears* channels the
+  old criterion wrongly flagged, where slow nonstationarity washed out a
+  whole-recording correlation that is fine window-by-window.
+  Presets scale: strict 5 %, default 10 %, lenient 20 %.
 - **The noisy criterion is one-sided** (`rz > 3`) where FASTER uses `|z| > 3`.
   Defensible — the low tail is already covered by the SD floor.
 

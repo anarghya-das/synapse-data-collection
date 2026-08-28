@@ -38,6 +38,18 @@ CEEGRID_QUALITY_PRESETS = {
         # --- robust method (filter-first; see quality/QC_methodology_review.md) ---
         'qc_bandpass': (1.0, 50.0),              # Hz - internal band-pass applied before ALL criteria
         'corr_low': 0.40,                        # max off-diag corr below this = bad (PREP-style low-corr)
+        'corr_window_s': 1.0,                    # correlation scored in 1-s windows (PREP)
+        'corr_bad_time_frac': 0.10,              # bad if it fails in >10% of windows.
+                                                 # PREP uses 1%, calibrated on artifact-free
+                                                 # scalp EEG. cEEGrid picks up jaw/facial EMG
+                                                 # that briefly decorrelates healthy channels,
+                                                 # so 1% flags 29% of all channels here (median
+                                                 # score 75 -> 53) and drops CTRL02/EXP02 from
+                                                 # the cohort. 10% leaves the cohort and median
+                                                 # score unchanged while still catching the 19
+                                                 # intermittent dropouts the whole-recording
+                                                 # correlation missed. See
+                                                 # docs/QC_grade_bands_review.md.
         'corr_high_report': 0.999,               # near-identical pair REPORTED as possible bridging (not scored)
         'z_thresh': 3.0,                         # |robust z| (median/MAD) on log-variance (FASTER-style)
     },
@@ -49,6 +61,8 @@ CEEGRID_QUALITY_PRESETS = {
         'correlation_threshold': (0.2, 0.8),
         'qc_bandpass': (1.0, 50.0),
         'corr_low': 0.50,
+        'corr_window_s': 1.0,
+        'corr_bad_time_frac': 0.05,
         'corr_high_report': 0.998,
         'z_thresh': 2.5,
     },
@@ -60,6 +74,8 @@ CEEGRID_QUALITY_PRESETS = {
         'correlation_threshold': (0.1, 0.9),
         'qc_bandpass': (1.0, 50.0),
         'corr_low': 0.30,
+        'corr_window_s': 1.0,
+        'corr_bad_time_frac': 0.20,
         'corr_high_report': 0.9995,
         'z_thresh': 3.5,
     },
@@ -232,6 +248,44 @@ def create_raw(eeg_stream, neurable=False, resampled_freq=125):
     return raw
 
 
+def windowed_max_corr(data, sfreq, window_s=1.0):
+    """PREP-style per-window correlation.
+
+    Returns ``(max_corr, n_windows)`` where ``max_corr`` has shape
+    ``(n_channels, n_windows)`` and holds each channel's **maximum absolute
+    off-diagonal correlation** within that window. A channel that is flat in a
+    window (zero SD, so correlation is undefined) gets 0.0 there -- it correlates
+    with nothing, which is exactly the disconnected case this detects.
+
+    Windowing matters: a whole-recording correlation averages over time, so an
+    electrode that detaches part-way through can still clear the threshold.
+    PREP scores each 1-s window and flags a channel on the FRACTION of windows
+    that fail (see ``quality_check``'s ``corr_bad_time_frac``).
+    """
+    n_ch, n_times = data.shape
+    win_len = max(2, int(round(window_s * sfreq)))
+    n_win = n_times // win_len
+    if n_ch < 2 or n_win < 1:
+        return np.ones((n_ch, max(n_win, 1))), max(n_win, 1)
+
+    # (n_ch, n_win, win_len); trailing partial window is dropped.
+    d = data[:, :n_win * win_len].reshape(n_ch, n_win, win_len)
+    d = d - d.mean(axis=2, keepdims=True)
+    sd = d.std(axis=2)
+    good = sd > 0
+    with np.errstate(invalid='ignore', divide='ignore'):
+        dn = np.where(good[:, :, None], d / sd[:, :, None], 0.0)
+
+    # Per-window correlation matrices: (n_win, n_ch, n_ch).
+    corr = np.einsum('iwt,jwt->wij', dn, dn) / win_len
+    np.abs(corr, out=corr)
+    idx = np.arange(n_ch)
+    corr[:, idx, idx] = -np.inf                      # exclude self-correlation
+    max_corr = corr.max(axis=2).T                    # (n_ch, n_win)
+    max_corr[~good] = 0.0                            # flat window: no correlation
+    return np.nan_to_num(max_corr, nan=0.0, posinf=0.0, neginf=0.0), n_win
+
+
 def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=False,
                   tmin=None, tmax=None, events=None, event_margin=10.0,
                   preset='default', bad_percent=None, sd_floor_uv=None,
@@ -251,9 +305,13 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         * flat:   amplitude < ``flat_voltage`` uV for > ``bad_percent`` of time
         * dead:   SD < ``sd_floor_uv`` uV (absolute low floor)
         * noisy:  robust z (median/MAD) of log-variance > ``z_thresh`` (FASTER-style)
-        * corr:   mean inter-channel correlation BELOW ``corr_low`` (PREP-style low-corr).
-                  High correlation is REPORTED (``bads_highcorr``, possible bridging)
-                  but NOT counted as bad.
+        * corr:   PREP-style WINDOWED low correlation -- the max |off-diagonal|
+                  correlation is scored in ``corr_window_s`` (1 s) windows and the
+                  channel is bad when it falls below ``corr_low`` in more than
+                  ``corr_bad_time_frac`` (10%) of them. Catches an electrode that
+                  detaches part-way through, which a whole-recording correlation
+                  averages away. High correlation is REPORTED
+                  (``bads_highcorr``, possible bridging) but NOT counted as bad.
 
     ``'legacy'`` (the original metric; kept for comparison)
       flat + dead on a 1 Hz HP copy + correlation OUTSIDE ``correlation_threshold``,
@@ -355,8 +413,19 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         mean_corr = corr_matrix.mean(axis=1)          # kept for reporting only
         corr_low = config.get('corr_low', 0.40)
         corr_hi_rep = config.get('corr_high_report', 0.985)
-        bads_corr = [ch_names_qc[i] for i in range(len(max_offdiag))
-                     if np.isfinite(max_offdiag[i]) and max_offdiag[i] < corr_low]
+
+        # PREP-style WINDOWED low-correlation criterion: score each window, then
+        # flag a channel when it fails in more than `corr_bad_time_frac` of them.
+        # (A single whole-recording correlation misses an electrode that detaches
+        # part-way through -- see docs/QC_grade_bands_review.md.)
+        win_s = config.get('corr_window_s', 1.0)
+        bad_frac_thresh = config.get('corr_bad_time_frac', 0.01)
+        win_max_corr, n_corr_windows = windowed_max_corr(
+            data_qc, raw_qc.info['sfreq'], window_s=win_s)
+        corr_bad_frac = (win_max_corr < corr_low).mean(axis=1)
+        bads_corr = [ch_names_qc[i] for i in range(len(corr_bad_frac))
+                     if corr_bad_frac[i] > bad_frac_thresh]
+        # Bridging stays a whole-recording report (it is a stationary property).
         bads_highcorr = [ch_names_qc[i] for i in range(len(max_offdiag))
                          if np.isfinite(max_offdiag[i]) and max_offdiag[i] >= corr_hi_rep]
         corr_thresh_used = (float(corr_low), float(corr_hi_rep))
@@ -382,6 +451,9 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         bads_corr = [ch_names_qc[i] for i, c in enumerate(mean_corr)
                      if (c < low_threshold) or (c > high_threshold)]
         corr_thresh_used = (float(low_threshold), float(high_threshold))
+        # Legacy is whole-recording by definition; keep the keys uniform.
+        corr_bad_frac = np.full(len(ch_names_qc), np.nan)
+        n_corr_windows = 0
 
     if plot_corr:
         import matplotlib.pyplot as plt
@@ -433,6 +505,8 @@ def quality_check(raw, flat_voltage=None, correlation_threshold=None, plot_corr=
         'ch_sd_uv': sd_uv,
         'corr_matrix': corr_matrix,
         'mean_corr': mean_corr,
+        'corr_bad_frac': corr_bad_frac,       # fraction of windows below corr_low
+        'n_corr_windows': int(n_corr_windows),
         'correlation_threshold': corr_thresh_used,
         'flat_voltage_volts': float(flat_voltage_volts),
         'time_window': (float(tmin_used), float(tmax_used)),
