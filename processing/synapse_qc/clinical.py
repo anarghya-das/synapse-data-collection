@@ -6,6 +6,11 @@ three sheets:
 
 * ``Demographics``  — one row per subject (ids, age/sex/race, dx history)
 * ``Questionnaires`` — one row per subject (THI/GAD/HQ/Iowa/Misophonia scores)
+* ``Questionnaires (OpenBCi)`` — **fallback** for subjects the coordinator only
+  entered there (the later EXP batch: EXP20, EXP43-46, EXP50-54). Same measures,
+  but eight condition-flag columns are inserted before THI so every column is
+  shifted right — hence a second position map. Used only when a subject is
+  absent from ``Questionnaires``; it never overrides a value from that sheet.
 * ``Audio Data``    — one wide row per subject (cohort flags, PTA + UHF
   thresholds, SRT, WRS, LDLs, tinnitus matching, tympanometry)
 
@@ -22,6 +27,7 @@ import re
 import pandas as pd
 
 _ID_RE = re.compile(r"^(EXP|CTRL)\d+$")
+_NUMERIC_RE = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)$")
 
 # Questionnaires sheet: measure -> column index (validated in _check_quest).
 MEASURE_COLS = {
@@ -29,6 +35,15 @@ MEASURE_COLS = {
     "HQ_Functional": 7, "HQ_Social": 8, "HQ_Emotional": 9, "HQ_Total": 10,
     "Iowa_Total": 15,
     "Miso_Section1": 17, "Miso_Section2": 18, "Miso_Section3": 19,
+}
+
+# 'Questionnaires (OpenBCi)' sheet: same measures, shifted right by the
+# condition-flag block (cols 2-9). Validated in _check_quest_openbci.
+MEASURE_COLS_OPENBCI = {
+    "THI_Total": 10, "GAD_Total": 12,
+    "HQ_Functional": 14, "HQ_Social": 15, "HQ_Emotional": 16, "HQ_Total": 17,
+    "Iowa_Total": 22,
+    "Miso_Section1": 24, "Miso_Section2": 25, "Miso_Section3": 26,
 }
 
 _PTA_FREQS = [250, 500, 1000, 2000, 3000, 4000, 6000, 8000]
@@ -44,6 +59,20 @@ def _cell(v):
         return v.date().isoformat()
     if isinstance(v, datetime.date):
         return v.isoformat()
+    return v
+
+
+def _quest_cell(v):
+    """Like :func:`_cell` but for questionnaire scores, which must stay numeric.
+
+    The OpenBCi sheet writes the *text* ``"No Tinnitus"`` in THI_Total for every
+    control (and EXP44/EXP53), where the primary Questionnaires sheet just leaves
+    the cell blank. Normalize to blank so the two sheets agree and the column
+    does not turn into an object dtype downstream.
+    """
+    v = _cell(v)
+    if isinstance(v, str) and not _NUMERIC_RE.match(v.strip()):
+        return ""
     return v
 
 
@@ -80,6 +109,17 @@ def _check_quest(df):
     _expect(df, 1, 12, "Iowa*", "Questionnaires")
     _expect(df, 1, 17, "Miso*", "Questionnaires")
     _expect(df, 2, 10, "Total Score", "Questionnaires")
+
+
+def _check_quest_openbci(df):
+    sheet = "Questionnaires (OpenBCi)"
+    _expect(df, 1, 10, "THI", sheet)
+    _expect(df, 1, 12, "GAD", sheet)
+    _expect(df, 1, 14, "HQ", sheet)
+    _expect(df, 1, 19, "Iowa*", sheet)
+    _expect(df, 1, 24, "Miso*", sheet)
+    _expect(df, 2, 17, "Total Score", sheet)   # HQ total
+    _expect(df, 2, 22, "Total Score", sheet)   # Iowa total
 
 
 def _check_audio(df, hdr):
@@ -158,24 +198,33 @@ def load_clinical_rows(xlsx_path, subjects, measures=None):
                          f"available: {sorted(MEASURE_COLS)}")
 
     quest = pd.read_excel(xlsx_path, sheet_name="Questionnaires", header=None)
+    quest_ob = pd.read_excel(xlsx_path, sheet_name="Questionnaires (OpenBCi)",
+                             header=None)
     demo = pd.read_excel(xlsx_path, sheet_name="Demographics", header=None)
     audio = pd.read_excel(xlsx_path, sheet_name="Audio Data", header=None)
 
     _check_quest(quest)
+    _check_quest_openbci(quest_ob)
     demo_hdr = _header_row(demo)
     _expect(demo, demo_hdr, 8, "Biological Sex", "Demographics")
     audio_hdr = _header_row(audio)
     _check_audio(audio, audio_hdr)
 
-    q_rows, d_rows, a_rows = (_subject_rows(x) for x in (quest, demo, audio))
+    q_rows, q_rows_ob, d_rows, a_rows = (
+        _subject_rows(x) for x in (quest, quest_ob, demo, audio))
 
     out = []
     for sid in subjects:
         row = {"subject_id": sid,
                "group": "EXP" if sid.startswith("EXP") else "CTRL"}
+        # Primary sheet wins; the OpenBCi sheet only fills subjects it omits.
         if sid in q_rows:
             for m in measures:
-                row[m] = _cell(quest.iat[q_rows[sid], MEASURE_COLS[m]])
+                row[m] = _quest_cell(quest.iat[q_rows[sid], MEASURE_COLS[m]])
+        elif sid in q_rows_ob:
+            for m in measures:
+                row[m] = _quest_cell(
+                    quest_ob.iat[q_rows_ob[sid], MEASURE_COLS_OPENBCI[m]])
         if sid in d_rows:
             row.update(_demographics(demo, demo_hdr, d_rows[sid]))
         if sid in a_rows:
