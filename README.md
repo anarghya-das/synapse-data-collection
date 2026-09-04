@@ -129,7 +129,7 @@ stimuli/{hlt,let,ast}/        Stimulus audio files actually read at runtime
 sounds/                       Raw source library (not read by the experiment directly)
 exp_data/                     XDF recordings and processed response CSVs
 processing/                   Offline QC + dataset pipelines (former synapse-data repo;
-                              own README, CLAUDE.md, requirements, Hydra conf).
+                              own README, docs/, requirements, Hydra conf).
                               Also holds the montage builder (processing/montage/)
                               and exploratory notebooks (processing/notebooks/)
 data/                         Raw PsychoPy trial logs (gitignored)

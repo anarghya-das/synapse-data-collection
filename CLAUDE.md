@@ -8,13 +8,104 @@ This repo holds BOTH halves of the SYNAPSE hearing study: the PsychoPy
 data-collection experiment (repo root) and the QC/dataset-building pipelines
 (`processing/` — the former standalone `synapse-data` repo, merged in via
 `git subtree` with its history preserved). `processing/` has its own README,
-CLAUDE.md, requirements, and Hydra `conf/`; run its pipelines FROM INSIDE
+requirements, Hydra `conf/` and `docs/`; run its pipelines FROM INSIDE
 `processing/` (`cd processing && python -m pipelines.build_dataset ...`).
 The raw recordings + generated outputs live on the lab server, pointed at via
 `$SYNAPSE_DATA_BASE` or `paths.root=...` — see `processing/README.md`. The
 analysis/paper repo is still separate: `../synapse` (a sibling of THIS repo's
 root; configured as an absolute path in `processing/conf/config.yaml`
 `paths.synapse_repo`, so nothing breaks if cwd differs).
+
+## Upstream data is on Drive/Box — `data/` is a stale pulled copy
+
+**When asked about new or missing data, check upstream — never assume the lab
+server's `data/` tree is current.** The coordinator uploads recordings to Google
+Drive and maintains the clinical workbook on Box; both are reachable via the
+configured `rclone` remotes (`gdrive:` / `box:`), and both MUST be addressed by
+folder id, not path.
+
+`processing/scripts/sync_study_data.py` does the whole chain (workbook pull ->
+mirror to Drive -> download new recordings -> demographics gate -> QC -> publish
+-> refresh dataset labels). Run `--dry-run` first.
+
+**Read `processing/docs/data_sync.md` before touching any of this** — it has the
+steps, the folder ids, the by-hand commands, and the traps that will otherwise
+cost you an hour (the non-EEG sibling folders, the phone-only subject ids that
+look like missing controls, the stale partial `01_Control` staging folder, the
+macOS `._*` litter, and why the MCP Drive tools can't enumerate these folders).
+
+## Processing (`processing/`) — QC rules
+
+`processing/` was the standalone `synapse-data` repo (subtree-merged, history
+preserved). Run its pipelines from inside it. Layout, output paths and env vars
+are in `processing/README.md`; do not restate them here.
+
+- **Two EEG streams per recording — pick deliberately.** `obci_eeg1` is RAW,
+  `obci_eeg2` is the OpenBCI GUI's filtered stream (~5-50 Hz + 60 Hz notch).
+  **QC scores the RAW stream**; the filtered one is a cross-check
+  (`score_filtered`) only. Which stream looks "good" flips per participant, so
+  never auto-pick best-of-two as the headline.
+- **`robust` is the default metric, `legacy` exists only for comparison.**
+  Robust band-passes a copy to 1-50 Hz before every criterion, so the score is
+  filtering-invariant. Legacy computes on the unfiltered signal and flags
+  common-mode DC drift as bad, scoring healthy recordings 0 (CTRL09: legacy 0,
+  robust 81). The correlation criterion is windowed (PREP-style) at 10 %, NOT
+  PREP's 1 % — cEEGrid sits over jaw muscle, so healthy channels briefly
+  decorrelate. Rationale + empirics: `docs/QC_methodology_review.md`,
+  `docs/QC_grade_bands_review.md`.
+- **Use *max* inter-channel correlation, never mean.** Ear-EEG channels are
+  weakly correlated with the contralateral ear, so a healthy channel's mean
+  correlation is naturally low.
+- **Duplicate detection runs on RAW, never the filtered copy.** Band-passing
+  strips the shared DC and collapses the separation: after 1-50 Hz, duplicated
+  CTRL27 (0.984) scores BELOW healthy CTRL10 (0.9996).
+  See `docs/recording_rig_faults.md`.
+- **R07 is excluded from the score denominator, not from `bad_channels`.** It is
+  a rig fault (open circuit, 88 % of recordings), so charging every participant
+  for it is wrong; it is still detected and still masked downstream. **Remove
+  `exclude_from_score` once the hardware is repaired**, else a regression hides.
+- **Never re-reference before QC** — and the pipeline never re-references at
+  all (`grep set_eeg_reference` returns nothing; keep it that way). A common
+  average HIDES bad channels (CTRL12: 66.7 -> a perfect 100 under CAR while 5
+  channels rail for ~45 % of the recording); bipolar montages fail the opposite
+  way. Re-referencing clean data is fine; re-referencing to DECIDE what is clean
+  is not. Evidence: `docs/QC_methodology_review.md`.
+- **`quality_score` is "% channels surviving QC", not signal fidelity.**
+  `100·(1 − n_bad/16)`. Don't over-read small differences.
+- **Detect the device by STREAM name, not folder name.** OpenBCI (16ch) is
+  scored; Neurable MW75 (14ch) is not. EXP32 is Neurable-only and its folder
+  name does NOT say so — use `qc_core.detect_devices`.
+- **Per-participant resolution quirks belong in `synapse_qc/inventory.py`**, in
+  one place: `-old` sessions skipped unless they are the only one (CTRL01/02/03),
+  EXP44's stream empty, EXP26/CTRL03 have no EEG stream.
+
+## Processing — pipelines and datasets
+
+- **TWO `quality_check` implementations, on purpose — do not unify them.**
+  `epoching.quality_check` is the vendored LEGACY metric and is the default,
+  because `build_dataset cohort=published` must mirror the published pkl.
+  `qc_core.quality_check` is the ROBUST one used by every QC entry point;
+  `pair_video` rebinds to it at run time, `build_dataset` deliberately does not
+  (rebinding changes bad channels on 23/28 published subjects).
+- **This repo owns processing**; the analysis repo (`../synapse`) only reads a
+  finished pkl. The published preprocessing code is vendored verbatim — full
+  rationale and the re-vendoring procedure in `docs/dataset_handoff.md`.
+- **The multimodal pipeline is two stages, detect-and-defer.** `pair_video`
+  records bad channels but does NOT interpolate/drop/zero or reject epochs;
+  `finalize_dataset` applies `channel_strategy` + epoch rejection. This is why
+  rejection PTP can be computed over good channels only, and why you can try
+  masking vs interpolation without re-running the slow pair step. Details:
+  `processing/README.md`.
+- **`docs/variants.md` is GENERATED from `conf/` — never hand-edit it.**
+  `python -m synapse_qc.variants --write` regenerates, `--check` exits 1 on
+  drift. Run `--check` after touching `conf/cohort/` or `conf/preprocessing/`.
+- **Two clinical workbooks, per-cohort on purpose.** `cohort=published` pins the
+  older `../synapse/02_PC Data.xlsx` so the mirror reproduces bit-faithfully;
+  every other cohort uses the newer local `02_PCData.xlsx`. Don't "fix" the
+  published cohort to use the new workbook.
+- **The prior hand ratings are deliberately NOT in this repo** so the first QC
+  pass stays independent; `synapse_qc/manual.py` can load them for comparison.
+- Use `bun` (not npm/npx) for JS tooling; Context7 MCP for library docs.
 
 ## `hearing.psyexp` is the source of truth — never hand-edit the generated files
 
@@ -66,8 +157,13 @@ one consistent with the repo's own channel table (3 and 6 skipped on BOTH ears
 and CTRL27 contain DUPLICATED L/R data** -- all 8 pairs at r~1.000000, unity
 scale, so the right grid carries no independent signal; QC scored them Good/87.5
 and Average/62.5 because `bads_highcorr` is reported but NEVER SCORED. Treat
-them as 8-channel or exclude. (4) EXP52 (newest) has the whole Daisy block at
-literal 0.0 in both streams = Daisy not streaming; suspect the Y-splitter.
+them as 8-channel or exclude. (4) EXP52 AND EXP50 have the whole Daisy block at
+literal 0.0 in both streams = Daisy not streaming; suspect the Y-splitter. This
+one is LIVE AND INTERMITTENT: EXP50 (tested 2026-08-19) reproduces EXP52's
+signature exactly -- all 8 right channels at SD 0.0000, corr_bad_frac 1.000 --
+while EXP54 (08-26) and EXP51 (09-01) recorded a healthy right grid. So it is a
+flaky connection, not a dead Daisy board, and it is still losing half the
+montage in new sessions. Check the splitter before each run.
 
 Gotcha when re-deriving it: the QC workbook shows ch13 SD as `0.0000`, but that
 is the POST-BAND-PASS SD (a DC constant filters to zero variance). The raw value
