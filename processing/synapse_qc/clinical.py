@@ -91,6 +91,33 @@ def _expect(df, row, col, want, sheet):
                          f"({row},{col}) is {got!r}, expected {want!r}")
 
 
+def _find_label(df, row, want, lo, hi):
+    """Column index in ``row`` whose cell equals ``want``, searched in [lo, hi).
+    ``want`` may end in ``*`` for a prefix match. Returns None if not found."""
+    for c in range(lo, min(hi, df.shape[1])):
+        got = str(df.iat[row, c]).strip()
+        if (got == want) if not want.endswith("*") else got.startswith(want[:-1]):
+            return c
+    return None
+
+
+def _shift(df, row, anchor, expected, sheet):
+    """How far the columns at/after ``expected`` have moved.
+
+    The coordinator periodically inserts a new condition-flag column into these
+    sheets (an ``ESL`` column once, a ``TBI`` column in the 2026-09-04 revision),
+    which slides every measure to the right. Rather than re-hardcoding the
+    positions each time, locate ``anchor`` near where it should be and return the
+    delta to add to the tail columns. A shift of 0 means the layout is unchanged.
+    """
+    got = _find_label(df, row, anchor, max(0, expected - 4), expected + 6)
+    if got is None:
+        raise ValueError(f"workbook layout changed: {sheet!r} row {row} has no "
+                         f"{anchor!r} column near {expected} — cannot resolve "
+                         f"the column layout")
+    return got - expected
+
+
 def _subject_rows(df, id_col=0):
     """{PID: row_index} for every row whose id column is an EXP/CTRL id.
     First occurrence wins (the sheets can repeat ids in 'Not Sorted' blocks)."""
@@ -111,18 +138,33 @@ def _check_quest(df):
     _expect(df, 2, 10, "Total Score", "Questionnaires")
 
 
-def _check_quest_openbci(df):
+def _quest_openbci_cols(df):
+    """``MEASURE_COLS_OPENBCI`` corrected for any inserted condition-flag
+    columns, then validated. THI is the first measure after the flag block, so
+    one anchor fixes every measure."""
     sheet = "Questionnaires (OpenBCi)"
-    _expect(df, 1, 10, "THI", sheet)
-    _expect(df, 1, 12, "GAD", sheet)
-    _expect(df, 1, 14, "HQ", sheet)
-    _expect(df, 1, 19, "Iowa*", sheet)
-    _expect(df, 1, 24, "Miso*", sheet)
-    _expect(df, 2, 17, "Total Score", sheet)   # HQ total
-    _expect(df, 2, 22, "Total Score", sheet)   # Iowa total
+    d = _shift(df, 1, "THI", MEASURE_COLS_OPENBCI["THI_Total"], sheet)
+    cols = {m: c + d for m, c in MEASURE_COLS_OPENBCI.items()}
+    _expect(df, 1, cols["GAD_Total"], "GAD", sheet)
+    _expect(df, 1, cols["HQ_Functional"], "HQ", sheet)
+    _expect(df, 2, cols["HQ_Total"], "Total Score", sheet)
+    _expect(df, 2, cols["Iowa_Total"], "Total Score", sheet)
+    _expect(df, 2, cols["Miso_Section1"], "Section 1", sheet)
+    return cols
 
 
-def _check_audio(df, hdr):
+# Audio Data: everything from this column onward slides when a condition flag
+# is inserted; the columns before it (ids, dates, cohort flags) never move.
+_AUDIO_TAIL = 22
+
+
+def _audio_shift(df, hdr):
+    """Columns >= :data:`_AUDIO_TAIL` shift when a condition flag is inserted.
+    The first PTA frequency (250 Hz) is the anchor."""
+    return _shift(df, hdr, "250", _AUDIO_TAIL, "Audio Data")
+
+
+def _check_audio(df, hdr, d=0):
     for col, want in [(4, "Audio ID"), (5, "Date Tested (O*"),
                       (7, "Date Tested (N*"),
                       (15, "Control"), (19, "Misophonia"),
@@ -130,12 +172,13 @@ def _check_audio(df, hdr):
                       (68, "Total Score*"), (76, "Total Score*"),
                       (78, "Ear Tested"), (85, "Tymp RE"), (86, "Tymp LE"),
                       (88, "Average LDL*")]:
-        _expect(df, hdr, col, want, "Audio Data")
+        _expect(df, hdr, col + (d if col >= _AUDIO_TAIL else 0), want,
+                "Audio Data")
     for col, freq in [(22, 250), (33, 250), (52, 10000), (57, 10000),
                       (62, 250), (70, 250)]:
-        if int(float(df.iat[hdr, col])) != freq:
+        if int(float(df.iat[hdr, col + d])) != freq:
             raise ValueError(f"workbook layout changed: 'Audio Data' header "
-                             f"col {col} != {freq}")
+                             f"col {col + d} != {freq}")
 
 
 def _demographics(df, hdr, i):
@@ -152,8 +195,11 @@ def _demographics(df, hdr, i):
     }
 
 
-def _audio(df, i):
+def _audio(df, i, d=0):
     r = df.iloc[i]
+    def t(col):
+        """Tail column, corrected for inserted condition-flag columns."""
+        return r[col + d]
     row = {
         "date_tested_openbci": _cell(r[5]), "date_tested_neurable": _cell(r[7]),
         "is_control": _cell(r[15]), "has_hearing_loss": _cell(r[16]),
@@ -162,27 +208,27 @@ def _audio(df, i):
     }
     for base, freqs in [(22, _PTA_FREQS), (52, _UHF_FREQS)]:
         for k, f in enumerate(freqs):
-            row[f"pta_right_{f}"] = _cell(r[base + k])
+            row[f"pta_right_{f}"] = _cell(t(base + k))
     for base, freqs in [(33, _PTA_FREQS), (57, _UHF_FREQS)]:
         for k, f in enumerate(freqs):
-            row[f"pta_left_{f}"] = _cell(r[base + k])
+            row[f"pta_left_{f}"] = _cell(t(base + k))
     row.update({
-        "pta_right_avg": _cell(r[30]), "hearing_loss_right": _cell(r[31]),
-        "pta_left_avg": _cell(r[41]), "hearing_loss_left": _cell(r[42]),
-        "srt_right": _cell(r[44]), "srt_left": _cell(r[45]),
-        "wrs_right_pct": _cell(r[47]), "wrs_right_db": _cell(r[48]),
-        "wrs_left_pct": _cell(r[49]), "wrs_left_db": _cell(r[50]),
+        "pta_right_avg": _cell(t(30)), "hearing_loss_right": _cell(t(31)),
+        "pta_left_avg": _cell(t(41)), "hearing_loss_left": _cell(t(42)),
+        "srt_right": _cell(t(44)), "srt_left": _cell(t(45)),
+        "wrs_right_pct": _cell(t(47)), "wrs_right_db": _cell(t(48)),
+        "wrs_left_pct": _cell(t(49)), "wrs_left_db": _cell(t(50)),
     })
     for k, f in enumerate(_LDL_FREQS):
-        row[f"ldl_right_{f}"] = _cell(r[62 + k])
-    row["ldl_right_avg"] = _cell(r[68])
+        row[f"ldl_right_{f}"] = _cell(t(62 + k))
+    row["ldl_right_avg"] = _cell(t(68))
     for k, f in enumerate(_LDL_FREQS):
-        row[f"ldl_left_{f}"] = _cell(r[70 + k])
+        row[f"ldl_left_{f}"] = _cell(t(70 + k))
     row.update({
-        "ldl_left_avg": _cell(r[76]), "ldl_overall_avg": _cell(r[88]),
-        "tinnitus_ear_tested": _cell(r[78]), "tinnitus_noise_used": _cell(r[79]),
-        "tinnitus_pitch_hz": _cell(r[80]), "tinnitus_loudness_db": _cell(r[81]),
-        "tympanometry_right": _cell(r[85]), "tympanometry_left": _cell(r[86]),
+        "ldl_left_avg": _cell(t(76)), "ldl_overall_avg": _cell(t(88)),
+        "tinnitus_ear_tested": _cell(t(78)), "tinnitus_noise_used": _cell(t(79)),
+        "tinnitus_pitch_hz": _cell(t(80)), "tinnitus_loudness_db": _cell(t(81)),
+        "tympanometry_right": _cell(t(85)), "tympanometry_left": _cell(t(86)),
     })
     return row
 
@@ -204,11 +250,12 @@ def load_clinical_rows(xlsx_path, subjects, measures=None):
     audio = pd.read_excel(xlsx_path, sheet_name="Audio Data", header=None)
 
     _check_quest(quest)
-    _check_quest_openbci(quest_ob)
+    ob_cols = _quest_openbci_cols(quest_ob)
     demo_hdr = _header_row(demo)
     _expect(demo, demo_hdr, 8, "Biological Sex", "Demographics")
     audio_hdr = _header_row(audio)
-    _check_audio(audio, audio_hdr)
+    audio_d = _audio_shift(audio, audio_hdr)
+    _check_audio(audio, audio_hdr, audio_d)
 
     q_rows, q_rows_ob, d_rows, a_rows = (
         _subject_rows(x) for x in (quest, quest_ob, demo, audio))
@@ -223,12 +270,11 @@ def load_clinical_rows(xlsx_path, subjects, measures=None):
                 row[m] = _quest_cell(quest.iat[q_rows[sid], MEASURE_COLS[m]])
         elif sid in q_rows_ob:
             for m in measures:
-                row[m] = _quest_cell(
-                    quest_ob.iat[q_rows_ob[sid], MEASURE_COLS_OPENBCI[m]])
+                row[m] = _quest_cell(quest_ob.iat[q_rows_ob[sid], ob_cols[m]])
         if sid in d_rows:
             row.update(_demographics(demo, demo_hdr, d_rows[sid]))
         if sid in a_rows:
-            row.update(_audio(audio, a_rows[sid]))
+            row.update(_audio(audio, a_rows[sid], audio_d))
         # Devices the workbook records for this subject (a subject can have
         # both, e.g. EXP10). NB: the EEG in the multimodal dataset is always
         # the OpenBCI recording — pairing requires the obci_eeg1 stream.

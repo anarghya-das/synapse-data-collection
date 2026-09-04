@@ -13,6 +13,7 @@ By default the raw `data/` and generated `outputs/` trees live under this
 directory. They can be moved elsewhere (e.g. the lab server
 `ub-polar:/data1/anarghya/synapse-data`, or an SSHFS mount of it) without
 editing code — point the tooling at the base dir. The published copy of `data/`
+
 + `outputs/` lives at `/data1/anarghya/synapse-data`.
 
 - **Env var (all entry points, incl. `run_quality.py` / `spotcheck.py`):**
@@ -69,6 +70,23 @@ outputs/
 
 See `outputs/README.md` in the data tree for the full map.
 
+## Pulling new data
+
+`data/` and `02_PCData.xlsx` are copies of upstream (Google Drive for the
+recordings, Box for the clinical workbook) and go stale.
+**[`docs/data_sync.md`](docs/data_sync.md)** documents the whole chain; it is
+automated by one script:
+
+```bash
+export SYNAPSE_DATA_BASE=/data1/anarghya/synapse-data
+python -m scripts.sync_study_data --dry-run      # report only, change nothing
+python -m scripts.sync_study_data                # workbook + recordings + QC + labels
+python -m scripts.sync_study_data --clinical-only  # just refresh dataset labels
+```
+
+New recordings are scored but do **not** enter a dataset automatically — that
+needs a cohort decision plus `pair_video` + `finalize_dataset` (step 8 in the doc).
+
 ## Running the quality analysis
 
 ```bash
@@ -88,12 +106,12 @@ The default **`robust`** method (filter-first; grounded in PREP/FASTER — see
 score does not depend on whether the input was already filtered, then flags a channel
 as **bad** if any criterion trips:
 
-| Criterion | Flags a channel when … | Default threshold |
-|---|---|---|
-| flat | amplitude below `flat_voltage` for > `bad_percent` of the time | 0.5 µV / 30 % |
-| dead | SD below a floor | 0.3 µV |
-| noisy | robust z (median/MAD) of log-variance is a high outlier | z > 3 |
-| corr | **max** correlation with any other channel below `corr_low` in more than `corr_bad_time_frac` of 1-s windows (disconnected / intermittently detached) | 0.40 / 10 % |
+| Criterion | Flags a channel when …                                                                                                                                         | Default threshold |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| flat      | amplitude below`flat_voltage` for > `bad_percent` of the time                                                                                               | 0.5 µV / 30 %    |
+| dead      | SD below a floor                                                                                                                                                | 0.3 µV           |
+| noisy     | robust z (median/MAD) of log-variance is a high outlier                                                                                                         | z > 3             |
+| corr      | **max** correlation with any other channel below `corr_low` in more than `corr_bad_time_frac` of 1-s windows (disconnected / intermittently detached) | 0.40 / 10 %       |
 
 The correlation criterion is **windowed** (PREP-style): the max |off-diagonal| correlation is
 scored in 1-s windows and a channel is bad when it fails in > 10 % of them, so an electrode
@@ -113,11 +131,11 @@ legacy, 81 under robust).
 
 "Usable" is a threshold choice. Counts of participants with usable EEG:
 
-| Definition | EXP | CTRL | Total |
-|---|---|---|---|
-| **Published cohort** (legacy QC, as-shipped in `../../synapse`) | 18 | 10 | 28 |
+| Definition                                                                             | EXP          | CTRL         | Total        |
+| -------------------------------------------------------------------------------------- | ------------ | ------------ | ------------ |
+| **Published cohort** (legacy QC, as-shipped in `../../synapse`)                | 18           | 10           | 28           |
 | **Corrected, lenient bar** (robust QC, ≥4 good channels = the study's own rule) | **28** | **15** | **43** |
-| Corrected, quality bar (robust QC, score ≥ 60 = ≥10 good channels) | 25 | 12 | 37 |
+| Corrected, quality bar (robust QC, score ≥ 60 = ≥10 good channels)                   | 25           | 12           | 37           |
 
 **Recommended cohort: 28 EXP / 15 CTRL** (robust QC at the study's own inclusion bar).
 
@@ -164,6 +182,7 @@ python -m pipelines.build_dataset --multirun preprocessing=drop,interpolate,zero
 python -m pipelines.build_dataset cohort=usable preprocessing=interpolate
 python -m pipelines.build_dataset cohort.exp='[EXP01,EXP13]' cohort.ctrl='[CTRL10]'  # ad-hoc
 ```
+
 - `conf/cohort/` — participant-ID sets; override with `cohort.exp=[...] cohort.ctrl=[...]`.
 - `conf/preprocessing/` — channel-handling variants (`drop` / `interpolate` / `zero_mask` / `keep_all`).
 - **[`docs/variants.md`](docs/variants.md) lists every cohort and preprocessing config, and
@@ -214,6 +233,7 @@ python -m pipelines.pair_video video.mode=marker                 # legacy marker
 python -m pipelines.pair_video preprocessing.bandpass.low=2 preprocessing.notch_freq=-1   # notch<0 disables
 python -m pipelines.pair_video cohort=published video.no_video=true   # EEG epochs only
 ```
+
 - **`epoch` mode** (default): one stim-locked clip + one EEG epoch per trial, both windowed
   to `tasks.timings`, with a per-frame `*_frames.csv` sidecar (`t_rel_stim_s`, `t_lsl_s`) —
   the alignment key. Use `av_align.resample_frames_to_eeg` / `nearest_frame_for_eeg` to map
@@ -246,6 +266,7 @@ python -m pipelines.finalize_dataset preprocessing=drop       # drop bad channel
 python -m pipelines.finalize_dataset preprocessing=keep_all   # raw bad channels + mask
 python -m pipelines.finalize_dataset preprocessing.epoch_rejection.enabled=false
 ```
+
 - **Why two stages:** rejection PTP is computed over the **good channels only** (a noisy bad
   channel can't corrupt it — only possible because channel handling is decoupled);
   interpolation is irreversible, so pairing keeps raw channels + a mask and you can try

@@ -105,8 +105,9 @@ HAPPE reports a *panel* (percent good channels, percent ICs rejected, percent
 variance retained, segments retained). `quality_score` is one axis: channel
 count. It says nothing about how clean the *surviving* channels are — a
 recording whose 16 channels are all marginal-but-unflagged scores 100. The
-repo already warns about this (`CLAUDE.md`: "quality_score is '% channels
-surviving QC', not signal fidelity"); the literature supports that caution.
+repo already warns about this (the repo-root `CLAUDE.md`: "quality_score is
+'% channels surviving QC', not signal fidelity"); the literature supports that
+caution.
 Pairing the grade with a second axis (epoch-rejection rate from
 `finalize_dataset`, or SNR of retained channels) would make it much more
 informative.

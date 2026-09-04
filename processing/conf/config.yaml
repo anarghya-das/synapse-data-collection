@@ -49,7 +49,7 @@ paths:
   montage: assets/ceegrid_montage_head.npz   # injected into create_mne (no CWD dependency)
   # Clinical workbook for clinical_data/clinical_scores/demographics. Relative
   # paths resolve against this directory. Pulled from Box -- see
-  # processing/CLAUDE.md. NOTE for cohort=published: the SIGNAL reproduces the
+  # docs/data_sync.md. NOTE for cohort=published: the SIGNAL reproduces the
   # published pkl exactly (compare.py checks that), but the clinical_* keys
   # reflect THIS workbook, which has grown since the paper was built. Point
   # cohort.clinical_data at an older copy if you need those to match too.
