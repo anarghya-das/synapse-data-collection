@@ -1,0 +1,72 @@
+# Usable cohort as of the 2026-09-04 sync: usable_20260828 (43) plus the three
+# recordings pulled from Drive that day -- EXP50, EXP51, EXP54.
+#
+# Same inclusion rule as usable_20260828: >= 4 INDEPENDENT channels (neither
+# faulty nor a duplicate of another channel). 31 EXP + 15 CTRL = 46.
+#
+# New this revision:
+#   EXP51  Good/93.3  (14 real channels)
+#   EXP54  Good/86.7  (13 real channels)
+#   EXP50  Bad /46.7  ( 7 real channels) -- LEFT-EAR-ONLY. Its entire right grid
+#          is at literal 0.0 (Daisy not streaming), the same live, intermittent
+#          rig fault as EXP52. Included for consistency with EXP52, which this
+#          cohort's predecessor already carried; drop both if you need two ears.
+#
+# Excluded, unchanged from usable_20260828: CTRL11/13/14/15/16, EXP12, EXP14
+# (every channel railed); CTRL03, EXP26 (no EEG stream); EXP44 (empty stream);
+# EXP32 (Neurable, not OpenBCI-scorable).
+#
+# CAVEAT -- EXP47 and CTRL27 are kept deliberately. Their right grid duplicates
+# the left, so they carry 7 independent channels with an UNVERIFIED EAR LABEL.
+# Fine for a non-spatial analysis (the duplicate copies are flagged bad and get
+# masked); do NOT use them for anything per-ear or per-electrode-position, and
+# do NOT use channel_strategy=interpolate on them.
+name: usable_20260904
+exp:
+  - EXP01
+  - EXP02
+  - EXP03
+  - EXP04
+  - EXP05
+  - EXP06
+  - EXP07
+  - EXP08
+  - EXP10
+  - EXP11
+  - EXP13
+  - EXP15
+  - EXP16
+  - EXP18
+  - EXP20
+  - EXP21
+  - EXP22
+  - EXP23
+  - EXP25
+  - EXP28
+  - EXP29
+  - EXP31
+  - EXP43
+  - EXP45
+  - EXP46
+  - EXP47
+  - EXP52
+  - EXP50
+  - EXP51
+  - EXP53
+  - EXP54
+ctrl:
+  - CTRL01
+  - CTRL02
+  - CTRL06
+  - CTRL07
+  - CTRL08
+  - CTRL09
+  - CTRL10
+  - CTRL12
+  - CTRL17
+  - CTRL18
+  - CTRL20
+  - CTRL21
+  - CTRL26
+  - CTRL27
+  - CTRL28

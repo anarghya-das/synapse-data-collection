@@ -8,8 +8,8 @@ Ports ``../../synapse/split_video.py`` into this repo's conventions:
     quality / epoch_rejection are all configurable and stay in lock-step with the
     processed-pkl variants;
   * task windows from ``tasks.timings``; video options from the ``video`` group;
-  * outputs under ``outputs/multimodal/paired/`` (one ``<PID>/`` tree per subject
-    + a top-level ``pairing_status.csv`` and ``manifest.json``).
+  * outputs under ``processed/{eeg,video,paired}/`` (one ``<PID>/`` tree each
+    + a top-level ``build_log.csv`` and ``manifest.json``).
 
 The published EEG alignment helpers (``create_mne`` and the marker/event
 machinery) are reused live from ``../../synapse`` exactly like ``build_dataset``,
@@ -99,7 +99,7 @@ def _resolve_cohort(cfg, data_root=None):
 
 def _write_dataset_manifest(rows, out_root, cfg, eeg_params):
     """Top-level CSV + JSON capturing per-subject status and the run provenance."""
-    csv_path = os.path.join(out_root, "pairing_status.csv")
+    csv_path = os.path.join(out_root, "build_log.csv")
     cols = [
         "group", "subject_id", "status", "mode", "n_bad_detected", "quality_score",
         "video_present", "paired_trials", "pmt", "hlt", "let", "ast",
@@ -162,7 +162,12 @@ def main(cfg: DictConfig) -> None:
     pre = cfg.preprocessing
     vid = cfg.video
     out_root = os.path.join(base, cfg.paths.paired_dir)
-    os.makedirs(out_root, exist_ok=True)
+    eeg_root = os.path.join(base, cfg.paths.get("eeg_dir")
+                            or os.path.join(cfg.paths.paired_dir, "_eeg"))
+    video_root = os.path.join(base, cfg.paths.get("video_dir")
+                              or os.path.join(cfg.paths.paired_dir, "_video"))
+    for d in (out_root, eeg_root, video_root):
+        os.makedirs(d, exist_ok=True)
 
     # Pairing is detect-and-defer: it applies stream/bandpass/notch/quality
     # (detection) but NOT channel_strategy or epoch_rejection -- those are consumed
@@ -202,10 +207,13 @@ def main(cfg: DictConfig) -> None:
                         "paired_trials": 0})
             rows.append(row)
             continue
-        out_dir = os.path.join(out_root, pid)
         try:
             summary = av_align.pair_recording(
-                p.xdf_path, p.video or None, pid, out_dir, **eeg_kw
+                p.xdf_path, p.video or None, pid,
+                eeg_dir=os.path.join(eeg_root, pid),
+                video_dir=os.path.join(video_root, pid),
+                align_dir=os.path.join(out_root, pid),
+                **eeg_kw
             )
             row.update({"status": "ok", **summary})
         except Exception as e:  # isolate one subject's failure (e.g. no EEG stream)

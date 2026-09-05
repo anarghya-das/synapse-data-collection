@@ -1,7 +1,7 @@
 # =============================================================================
 # SYNAPSE finalize configuration (Hydra)
 # =============================================================================
-# Turn the detect-and-defer paired dataset (outputs/multimodal/paired, from pair_video) into
+# Turn the detect-and-defer stage trees (processed/{eeg,video,paired}, from pair_video) into
 # a training-ready dataset: apply the channel strategy + epoch rejection that
 # pairing deliberately left out, emit a per-channel validity mask, and filter the
 # video<->EEG pairing to the surviving epochs.
@@ -16,21 +16,31 @@
 # build_dataset / pair_video use, so the finalized variant stays in lock-step.
 # =============================================================================
 
+# How a finalized variant stores its epochs:
+#   materialized (default) — write the transformed .fif; directly loadable with
+#                            mne.read_epochs(), self-contained, ~390 MB/variant.
+#   view                   — store only the decisions (mask + surviving epochs)
+#                            and reconstruct via synapse_qc.dataset.load_epochs();
+#                            ~2 MB/variant but needs processed/eeg/ present.
+dataset_layout: materialized
+
 defaults:
   - preprocessing: published   # channel_strategy + epoch_rejection variant
+  # No cohort by default: finalize takes every subject in processed/eeg/.
+  # Add one to build a subset, e.g. `+cohort=usable_20260904`.
   - _self_
 
 hydra:
   run:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
   sweep:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
     subdir: ${hydra.job.num}
   output_subdir: null
   job:
     chdir: false
 
-# Output goes to outputs/multimodal/final/<variant>/ so different channel
+# Output goes to processed/dataset/multimodal/<variant>/ so different channel
 # strategies live side by side (interpolate vs zero_mask vs drop) without
 # re-running pair_video.
 name: ${preprocessing.name}
@@ -39,15 +49,17 @@ name: ${preprocessing.name}
 variant: null
 
 paths:
-  # Base dir holding the `outputs/` trees. null => the repo root. Point it at the
+  # Base dir holding the `processed/` trees. null => the repo root. Point it at the
   # relocated copy (server / SSHFS mount) to read/write there:
   #   python -m pipelines.finalize_dataset paths.root=/data1/anarghya/synapse-data
   # Also honored via $SYNAPSE_DATA_BASE.
   root: null
   montage: assets/ceegrid_montage_head.npz   # for channel_strategy=interpolate
   # ---- Input/output locations (resolve as <base>/<dir>). Change HERE, not in code.
-  paired_dir: outputs/multimodal/paired      # input: detect-and-defer paired data
-  dataset_dir: outputs/multimodal/final      # output root (per-variant subdir)
+  eeg_dir: processed/eeg            # input: epochs + QC sidecars
+  video_dir: processed/video        # input: clips + frame timings
+  paired_dir: processed/paired     # input: trial index (alignment)
+  dataset_dir: processed/dataset/multimodal      # output root (per-variant subdir)
   # Clinical workbook joined into each variant as clinical.csv (one row per
   # finalized subject), parsed directly by synapse_qc/clinical.py — no
   # analysis-repo dependency. Relative paths resolve against the repo dir.

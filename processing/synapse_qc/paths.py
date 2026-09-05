@@ -20,7 +20,7 @@ _CONFIG = os.path.join(REPO, "conf", "config.yaml")
 
 
 def resolve_base(cfg_root=None, warn=True):
-    """Base dir holding the ``outputs/`` (and usually ``data/``) trees."""
+    """Base dir holding the ``processed/`` (and usually ``raw/``) trees."""
     base = cfg_root or os.environ.get("SYNAPSE_DATA_BASE")
     if base:
         return base

@@ -6,8 +6,8 @@ the messy folder conventions live in exactly one place.
 
 Folder layout (under ``data/``)::
 
-    data/02_Experimental/EXP01/sub-323706/sub-323706_task-hearing_run-001.xdf
-    data/01_Control/CTRL07/sub-184632/sub-184632_task-hearing_run-001.xdf
+    raw/experimental/EXP01/sub-323706/sub-323706_task-hearing_run-001.xdf
+    raw/control/CTRL07/sub-184632/sub-184632_task-hearing_run-001.xdf
 
 Non-obvious conventions handled here (verified against the actual data, not
 assumed):
@@ -34,25 +34,35 @@ def _default_data_root():
     Lets the recordings be relocated off the repo (e.g. onto the lab server
     ``/data1/anarghya/synapse-data``) without editing code. Precedence:
       1. ``$SYNAPSE_DATA_ROOT`` -- the raw-data dir directly.
-      2. ``$SYNAPSE_DATA_BASE`` -- a base holding ``data/`` + ``outputs/``; the
-         raw dir is ``<base>/data``.
-      3. ``<repo>/data`` (the in-repo default; original behaviour).
+      2. ``$SYNAPSE_DATA_BASE`` -- a base holding ``raw/`` + ``processed/``; the
+         raw dir is ``<base>/raw``.
+      3. ``<repo>/raw`` (the in-repo default).
     Hydra pipelines can still override per-call via ``discover(data_root=...)``.
+
+    ``raw/`` was called ``data/`` before the 2026-09-04 layout migration; the
+    old name is still honoured so an un-migrated tree keeps working.
     """
     env = os.environ.get("SYNAPSE_DATA_ROOT")
     if env:
         return os.path.normpath(env)
     base = os.environ.get("SYNAPSE_DATA_BASE")
     if base:
-        return os.path.normpath(os.path.join(base, "data"))
-    return os.path.normpath(os.path.join(_THIS, "..", "data"))
+        new = os.path.join(base, "raw")
+        legacy = os.path.join(base, "data")
+        return os.path.normpath(
+            legacy if not os.path.isdir(new) and os.path.isdir(legacy) else new)
+    repo_new = os.path.join(_THIS, "..", "raw")
+    repo_old = os.path.join(_THIS, "..", "data")
+    return os.path.normpath(
+        repo_old if not os.path.isdir(repo_new) and os.path.isdir(repo_old)
+        else repo_new)
 
 
 DATA_ROOT = _default_data_root()
 
 GROUP_DIRS = {
-    "EXP": "02_Experimental",
-    "CTRL": "01_Control",
+    "EXP": "experimental",
+    "CTRL": "control",
 }
 
 

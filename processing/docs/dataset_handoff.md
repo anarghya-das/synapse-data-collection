@@ -77,7 +77,7 @@ thing here that looks for that repo, and it is optional.
 Every `build_dataset` run writes two identical pickles into the variant dir:
 
 ```
-outputs/epochs/<cohort>__<preprocessing>/
+processed/dataset/eeg_only/<variant>/
   epochs.pkl                          # canonical, for this repo's tooling
   synapse_preprocessed_<YYYY-MM-DD>.pkl   # <- the analysis repo reads this
   manifest.json                       # cohort, params, git SHA, resolved config

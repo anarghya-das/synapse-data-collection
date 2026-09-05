@@ -164,8 +164,8 @@ def main(cfg: DictConfig) -> None:
         "config": OmegaConf.to_container(cfg, resolve=True),
     }
 
-    # One directory per variant: outputs/epochs/<cohort>__<preprocessing>/
-    # holding epochs.pkl + manifest.json (uniform with the multimodal variants).
+    # One directory per variant: processed/dataset/eeg_only/<variant>/
+    # holding epochs.pkl + manifest.json.
     out_dir = os.path.join(base, cfg.paths.output_dir, variant)
     os.makedirs(out_dir, exist_ok=True)
     pkl_path = os.path.join(out_dir, "epochs.pkl")

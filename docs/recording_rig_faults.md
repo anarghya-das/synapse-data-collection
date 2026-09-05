@@ -60,7 +60,7 @@ problem with the right hemisphere of the montage.
 ## 1. The evidence
 
 Found while auditing per-channel QC failure rates across all 54 participants
-(`outputs/qc/quality_results.xlsx`).
+(`processed/qc/quality_results.xlsx`).
 
 **It is not random.** Failure rates differ strongly by electrode position
 (chi-square = 95.6, p < 0.0001), and one channel dominates:
@@ -405,5 +405,5 @@ near zero nor in the hundreds.
 - Knierim, M. T., Schemmer, M., & Bauer, N. (2022). A simplified design of a
   cEEGrid ear-electrode adapter for the OpenBCI biosensing platform.
   *HardwareX, 12*, e00357. <https://doi.org/10.1016/j.ohx.2022.e00357>
-- Per-channel QC data: `outputs/qc/quality_results.xlsx` (Per-Channel sheet)
+- Per-channel QC data: `processed/qc/quality_results.xlsx` (Per-Channel sheet)
 - Related: `processing/docs/QC_grade_bands_review.md`

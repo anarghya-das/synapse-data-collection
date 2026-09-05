@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Copy subject folders from 01_Experimental/01_Control into PC/Phone subfolders."""
+"""Copy subject folders from 01_Experimental/01_Control into PC/Phone subfolders.
+
+NB those are folder names on GOOGLE DRIVE, not local paths -- and they are the
+OLD, PARTIAL staging area, superseded by `PC/` (see docs/data_sync.md). Kept for
+the folder ids it records; prefer scripts/sync_study_data.py for pulling data.
+"""
 
 from __future__ import annotations
 

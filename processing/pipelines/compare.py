@@ -7,7 +7,7 @@ per-task epoch counts, and numerical epoch-data differences.
 
     python -m pipelines.compare --variant published__published
     python -m pipelines.compare --variant published__published \
-        --mine outputs/epochs/published__published/epochs.pkl \
+        --mine processed/dataset/eeg_only/published/epochs.pkl \
         --ref /path/to/synapse-analysis/processed_data/synapse_preprocessed.pkl
 """
 import os

@@ -1,7 +1,7 @@
 # Pulling new data: Box + Drive -> scored, labelled dataset
 
-**Rule: the lab server's `data/` tree is a pulled copy and goes stale. When
-asked about new or missing data, check upstream — never assume `data/` is
+**Rule: the lab server's `raw/` tree is a pulled copy and goes stale. When
+asked about new or missing data, check upstream — never assume `raw/` is
 current.**
 
 Two upstream sources, both reachable through already-configured rclone remotes:
@@ -28,11 +28,11 @@ python -m scripts.sync_study_data              # full run
 |---|---|---|---|
 | 1 | Pull the workbook from Box | `sync_study_data.py` stage 1 | writes `processing/02_PCData.xlsx`; `--commit-workbook` also git-commits that one file |
 | 2 | Mirror the workbook to Drive `PC/` | stage 2 | so the coordinator sees labels next to recordings |
-| 3 | Download new recordings | stage 3 | diffs `PC/{Control,Experimental}` against `data/`; skips folders with no `.xdf` |
+| 3 | Download new recordings | stage 3 | diffs `PC/{Control,Experimental}` against `raw/`; skips folders with no `.xdf` |
 | 4 | Demographics gate | stage 4 | a subject with no clinical row can't enter a dataset; `--skip-demographics-check` overrides |
-| 5 | Score them | `run_quality.py` (stage 5) | writes `outputs/qc/quality_results.xlsx` |
+| 5 | Score them | `run_quality.py` (stage 5) | writes `processed/qc/quality_results.xlsx` |
 | 6 | Publish the QC workbook | stage 6 | uploads to Drive `PC/quality_results.xlsx` |
-| 7 | Refresh dataset labels | stage 7 | rewrites each built variant's `clinical.csv` |
+| 7 | Refresh dataset labels | stage 7 | rewrites each built variant's `labels.csv` |
 | 8 | Build the dataset | `pipelines/pair_video.py` then `pipelines/finalize_dataset.py` | **manual** — needs a new cohort config first |
 
 Steps 1–2 always run. `--clinical-only` runs 1, 2 and 7 — the fast path for "the
@@ -43,7 +43,7 @@ no QC. Other flags: `--no-qc`, `--force-qc`, `--no-clinical-refresh`,
 ### Why step 7 is not "re-run finalize"
 
 A workbook pull changes the **labels** of an already-built dataset and nothing
-else — the epochs and video are untouched. Rewriting `clinical.csv` per variant
+else — the epochs and video are untouched. Rewriting `labels.csv` per variant
 takes a second; re-running `finalize_dataset` would rebuild ~360 MB of identical
 `.fif` per variant. Step 7 mirrors `finalize_dataset._write_clinical` exactly
 (same column order, same manifest bookkeeping) so the two cannot drift.
@@ -56,8 +56,12 @@ a cohort decision first (which subjects clear the inclusion bar — see
 Make the cohort call, then:
 
 ```bash
-python -m pipelines.pair_video       cohort=<new_cohort> paths.paired_dir=outputs/multimodal/paired_<date>
-python -m pipelines.finalize_dataset cohort=<new_cohort> preprocessing=zero_mask paths.paired_dir=...
+# 1. add the subjects to the shared paired tree (slow; NB it rewrites build_log.csv
+#    for the whole tree, so only the subjects you pass survive in it -- see below)
+python -m pipelines.pair_video "cohort.exp=[EXP50,EXP51]" "cohort.ctrl=[]"
+
+# 2. new cohort config listing every subject, then finalize (fast)
+python -m pipelines.finalize_dataset preprocessing=zero_mask
 ```
 
 ## Doing it by hand
@@ -76,7 +80,7 @@ rclone lsd "gdrive:PC/Experimental" --drive-root-folder-id $DRIVE_ROOT
 
 # pull one subject (ALWAYS exclude the macOS junk)
 rclone copy "gdrive:PC/Experimental/EXP50" \
-    /data1/anarghya/synapse-data/data/02_Experimental/EXP50 \
+    /data1/anarghya/synapse-data/raw/experimental/EXP50 \
     --drive-root-folder-id $DRIVE_ROOT --exclude "._*" --exclude ".DS_Store" -P
 
 # pull the workbook
@@ -90,7 +94,7 @@ Drive root: <https://drive.google.com/drive/u/3/folders/1Eh9SlATsEUzrGEDgNVfWPLe
 **`PC/` is the EEG tree; its siblings are not.** `PC/Control` + `PC/Experimental`
 hold one `<PID>/sub-<num>/` per subject with the `.xdf`, `.avi` and
 `_responses.csv`. They map onto the local tree with a **name change**:
-`PC/Control` -> `data/01_Control`, `PC/Experimental` -> `data/02_Experimental`.
+`PC/Control` -> `raw/control`, `PC/Experimental` -> `raw/experimental`.
 `Phone/` (phone pupillometry, `.mp4` + `.json`, no XDF), `DNQ/` (screen
 failures), `Practice Data/` and `old_backup/` are **not** mirrored locally.
 
@@ -170,3 +174,18 @@ EXP50 reproduces EXP52's right-grid fault exactly (all 8 right channels at
 SD 0.0000, `corr_bad_frac` 1.000 = Daisy not streaming), so it is left-ear-only
 data. The fault is live and intermittent — EXP54 (08-26) and EXP51 (09-01)
 recorded a healthy right grid. See `docs/recording_rig_faults.md`.
+
+## Layout note (2026-09-04)
+
+The tree was reorganised by pipeline STEP: `data/` -> `raw/{control,experimental}`
+and `outputs/` -> `processed/{qc,eeg,video,paired,dataset,logs}`. Per-
+variant files were renamed `clinical.csv` -> `labels.csv` and
+`finalize_status.csv` / `pairing_status.csv` -> `build_log.csv`. See
+`processed/README.md` in the data tree. `scripts/migrate_layout.py` performed it
+and can be read for the exact mapping — note it also rewrote the path columns
+inside every `*_alignment.csv`, which a plain `mv` would have silently broken.
+
+**`pair_video` rewrites the whole tree's `build_log.csv` on every run**, scoped
+to the cohort you pass it. Adding subjects incrementally therefore truncates that
+file to just the new ones; rebuild it from the per-subject `alignment.csv` /
+`qc.json` sidecars, or re-run over the full cohort.

@@ -20,7 +20,7 @@ because each depends on the one before it (numbering matches the table in
 5. **QC.** ``run_quality.py`` scores every recording.
 6. **Publish the QC workbook** to Drive ``PC/quality_results.xlsx`` -- a single
    always-current file, deliberately not dated.
-7. **Refresh built variants' ``clinical.csv``.** A workbook pull changes the
+7. **Refresh built variants' ``labels.csv``.** A workbook pull changes the
    LABELS of an already-built dataset and nothing else, so rewrite just that file
    per variant rather than re-running finalize over ~360 MB of unchanged epochs.
    Runs whenever the workbook moved, independently of whether QC ran.
@@ -74,7 +74,7 @@ DRIVE_ROOT_ID = "1Eh9SlATsEUzrGEDgNVfWPLeOWE2Cy90l"
 DRIVE_PC = "PC"                            # PC/ = EEG; Phone/, DNQ/ are not
 
 # Drive subfolder -> local data subdir. The names deliberately differ.
-COHORTS = {"Control": "01_Control", "Experimental": "02_Experimental"}
+COHORTS = {"Control": "control", "Experimental": "experimental"}
 
 LOCAL_WORKBOOK = REPO / "02_PCData.xlsx"   # no space locally
 
@@ -308,10 +308,10 @@ def push_qc(xlsx, dry_run):
 
 
 # --------------------------------------------------------------------------- #
-# Refresh clinical.csv in the built dataset variants
+# Refresh labels.csv in the built dataset variants
 # --------------------------------------------------------------------------- #
 def refresh_clinical(workbook, dry_run, only_variant=None):
-    """Re-derive each built variant's ``clinical.csv`` from the current workbook.
+    """Re-derive each built variant's ``labels.csv`` from the current workbook.
 
     A workbook pull changes the LABELS of an already-built dataset, and nothing
     else -- the epochs and video are untouched -- so this rewrites just that one
@@ -319,23 +319,24 @@ def refresh_clinical(workbook, dry_run, only_variant=None):
     of .fif per variant for no reason). Mirrors ``finalize_dataset._write_clinical``:
     same column order (first-seen across rows) and the same manifest bookkeeping.
     """
-    header("Refresh clinical.csv in built variants")
+    header("Refresh labels.csv in built variants")
     from omegaconf import OmegaConf
     from synapse_qc import paths as qpaths
     from synapse_qc.clinical import load_clinical_rows
 
-    # output_paths() only covers qc/epochs; the finalized-variant root lives in
-    # conf/finalize.yaml (paths.dataset_dir), same as finalize_dataset resolves it.
+    # Scan every dataset PRODUCT (eeg_only, multimodal, ...), not just the one
+    # finalize happens to default to -- a workbook pull relabels all of them.
     base = qpaths.output_paths()["base"]
     fcfg = OmegaConf.load(REPO / "conf" / "finalize.yaml")
-    final_dir = Path(base) / fcfg.paths.dataset_dir
+    final_dir = Path(base) / Path(fcfg.paths.dataset_dir).parent
     if not final_dir.exists():
         print(f"  -> no built variants at {final_dir}")
         return []
-    variants = sorted(d for d in final_dir.iterdir()
-                      if d.is_dir() and (d / "finalize_status.csv").exists())
+    variants = sorted(d for d in final_dir.glob("*/*")
+                      if d.is_dir() and (d / "build_log.csv").exists())
     if only_variant:
-        variants = [d for d in variants if d.name == only_variant]
+        variants = [d for d in variants
+                    if only_variant in (d.name, f"{d.parent.name}/{d.name}")]
         if not variants:
             raise RuntimeError(f"variant {only_variant!r} not found in {final_dir}")
     if not variants:
@@ -348,7 +349,7 @@ def refresh_clinical(workbook, dry_run, only_variant=None):
 
     touched = []
     for v in variants:
-        st = pd.read_csv(v / "finalize_status.csv")
+        st = pd.read_csv(v / "build_log.csv")
         subjects = st.loc[st.status == "ok", "subject_id"].tolist()
         measures = None
         mf = v / "manifest.json"
@@ -366,28 +367,28 @@ def refresh_clinical(workbook, dry_run, only_variant=None):
         n_any = sum(1 for r in rows if any(
             str(val).strip() for k, val in r.items()
             if k not in ("subject_id", "group", "devices_present")))
-        print(f"  {v.name}: {len(rows)} subjects, {len(cols)} cols, "
+        print(f"  {v.parent.name}/{v.name}: {len(rows)} subjects, {len(cols)} cols, "
               f"{n_any} with clinical data"
               + (f", {n_quest} with questionnaires" if measures else ""))
         if dry_run:
-            print("    -> WOULD REWRITE clinical.csv (dry-run)")
+            print("    -> WOULD REWRITE labels.csv (dry-run)")
             continue
-        with open(v / "clinical.csv", "w", newline="") as fh:
+        with open(v / "labels.csv", "w", newline="") as fh:
             w = _csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
             w.writeheader()
             w.writerows(rows)
         if man:
             man.setdefault("clinical", {})
             man["clinical"].update({
-                "csv": "clinical.csv",
+                "csv": "labels.csv",
                 "workbook": str(workbook),
                 "subjects_with_entries": n_any,
                 "subjects_with_questionnaires": n_quest,
                 "refreshed": datetime.date.today().isoformat(),
             })
             mf.write_text(json.dumps(man, indent=2))
-        print("    -> rewrote clinical.csv" + (" + manifest" if man else ""))
-        touched.append(v.name)
+        print("    -> rewrote labels.csv" + (" + manifest" if man else ""))
+        touched.append(f"{v.parent.name}/{v.name}")
     return touched
 
 
@@ -404,15 +405,15 @@ def main():
                     help="run QC even when no new recordings were downloaded")
     ap.add_argument("--data-root", default=None,
                     help="raw recordings dir (default: $SYNAPSE_DATA_ROOT / "
-                         "$SYNAPSE_DATA_BASE/data / <repo>/data)")
+                         "$SYNAPSE_DATA_BASE/raw / <repo>/raw)")
     ap.add_argument("--date", default="", help="run-date label for the QC Legend")
     ap.add_argument("--clinical-only", action="store_true",
                     help="pull the workbook and refresh each built variant's "
-                         "clinical.csv, nothing else (no download, no QC)")
+                         "labels.csv, nothing else (no download, no QC)")
     ap.add_argument("--variant", default=None,
-                    help="restrict the clinical.csv refresh to one variant dir")
+                    help="restrict the labels.csv refresh to one variant dir")
     ap.add_argument("--no-clinical-refresh", action="store_true",
-                    help="leave built variants' clinical.csv alone")
+                    help="leave built variants' labels.csv alone")
     ap.add_argument("--commit-workbook", action="store_true",
                     help="git-commit the refreshed workbook (that file only)")
     args = ap.parse_args()
@@ -438,7 +439,7 @@ def main():
             refreshed = refresh_clinical(workbook, args.dry_run, args.variant)
             header("Summary")
             print(f"  workbook:        {wb_note}")
-            print(f"  clinical.csv:    {refreshed or 'none'}")
+            print(f"  labels.csv:    {refreshed or 'none'}")
             print("  recordings/QC:   skipped (--clinical-only)")
             print("\nDone.")
             return 0
@@ -477,7 +478,7 @@ def main():
         if wb_changed and not args.no_clinical_refresh:
             refresh_clinical(workbook, args.dry_run, args.variant)
         elif not wb_changed:
-            print("\n(clinical.csv refresh skipped — workbook unchanged)")
+            print("\n(labels.csv refresh skipped — workbook unchanged)")
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 

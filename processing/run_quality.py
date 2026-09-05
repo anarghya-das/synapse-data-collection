@@ -5,8 +5,8 @@ Walks ``data/``, resolves the canonical recording per participant (see
 recording, and writes (under ``paths.qc_dir`` from ``conf/config.yaml``,
 resolved against $SYNAPSE_DATA_BASE — see ``synapse_qc.paths``):
 
-  * ``outputs/qc/quality_results.xlsx``  - Summary + Per-Channel + Legend sheets
-  * ``outputs/qc/reports/<PID>.txt``     - per-participant text report
+  * ``processed/qc/quality_results.xlsx``  - Summary + Per-Channel + Legend sheets
+  * ``processed/qc/reports/<PID>.txt``     - per-participant text report
 
 This pass is fully independent of any prior hand rating; the comparison
 against ``participant_info.tsv`` is a separate later step.
@@ -255,7 +255,7 @@ def main():
     ap.add_argument("--date", default="", help="label the run date in the Legend")
     ap.add_argument("--data-root", default=None,
                     help="raw recordings dir (default: $SYNAPSE_DATA_ROOT / "
-                         "$SYNAPSE_DATA_BASE/data / <repo>/data)")
+                         "$SYNAPSE_DATA_BASE/raw / <repo>/raw)")
     args = ap.parse_args()
 
     # Output location comes from conf/config.yaml (paths.qc_dir) -- change it

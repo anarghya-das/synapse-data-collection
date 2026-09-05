@@ -56,12 +56,13 @@ def preprocessings():
 
 
 def built(base=None):
-    """[(product, dir, cohort, strategy, built, extra)] found in the outputs tree."""
+    """[(product, dir, cohort, strategy, built, extra)] found in the processed
+    tree. Scans the dataset variants plus the shared stage trees."""
     base = base or qpaths.resolve_base(warn=False)
-    root = os.path.join(base, "outputs")
+    root = os.path.join(base, "processed")
     found = []
-    for product, rel in (("epochs", "epochs"),
-                         ("multimodal-final", "multimodal/final")):
+    for product, rel in (("dataset-eeg_only", "dataset/eeg_only"),
+                         ("dataset-multimodal", "dataset/multimodal")):
         d = os.path.join(root, rel)
         if not os.path.isdir(d):
             continue
@@ -72,19 +73,19 @@ def built(base=None):
             j = json.load(open(man))
             found.append((product, f"{rel}/{name}", j.get("cohort", "?"),
                           j.get("channel_strategy", "?"),
-                          str(j.get("built", ""))[:10], ""))
-    mm = os.path.join(root, "multimodal")
-    if os.path.isdir(mm):
-        for name in sorted(n for n in os.listdir(mm) if n.startswith("paired")):
-            man = os.path.join(mm, name, "manifest.json")
-            if not os.path.isfile(man):
-                continue
-            j = json.load(open(man))
-            n_sub = len([x for x in os.listdir(os.path.join(mm, name))
-                         if os.path.isdir(os.path.join(mm, name, x))])
-            found.append(("multimodal-paired", f"multimodal/{name}",
-                          j.get("cohort", "?"), "— (detect-and-defer)",
-                          str(j.get("built", ""))[:10], f"{n_sub} subjects"))
+                          str(j.get("built", ""))[:10],
+                          j.get("layout", "")))
+    # The stage trees are not variants -- they hold every processed subject --
+    # but reporting their size is what tells you what a dataset can be built from.
+    for product, rel in (("stage-eeg", "eeg"), ("stage-video", "video"),
+                         ("stage-paired", "paired")):
+        d = os.path.join(root, rel)
+        if not os.path.isdir(d):
+            continue
+        n = len([x for x in os.listdir(d)
+                 if os.path.isdir(os.path.join(d, x))])
+        found.append((product, rel, "all processed", "—", "",
+                      f"{n} subjects"))
     return found
 
 

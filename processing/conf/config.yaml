@@ -17,31 +17,31 @@ defaults:
   - _self_
 
 # Keep the working directory unchanged (so our relative paths resolve) and corral
-# Hydra's run log + metadata under <base>/outputs/logs/ (base = $SYNAPSE_DATA_BASE,
+# Hydra's run log + metadata under <base>/processed/logs/ (base = $SYNAPSE_DATA_BASE,
 # else the repo) instead of littering the repo root.
 hydra:
   run:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
   sweep:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
     subdir: ${hydra.job.num}
   output_subdir: null
   job:
     chdir: false
 
 # Variant identity is two-dimensional (cohort x preprocessing) and names the
-# output dir outputs/epochs/<variant>/ (epochs.pkl + manifest.json inside).
+# output dir processed/dataset/eeg_only/<variant>/ (epochs.pkl + manifest.json).
 # Override with variant=<name> for ad-hoc builds.
 variant: ${cohort.name}__${preprocessing.name}
 
 paths:
-  # Base dir holding the raw `data/` and generated `outputs/` trees. null => the
+  # Base dir holding the `raw/` and generated `processed/` trees. null => the
   # repo root (original behaviour). Point it at the relocated copy to read/write
   # there -- e.g. on the lab server, or an SSHFS mount of it locally:
   #   python -m pipelines.build_dataset paths.root=/data1/anarghya/synapse-data
   # Also honored via $SYNAPSE_DATA_BASE (covers the non-Hydra run_quality.py).
   root: null
-  # Explicit raw-recordings dir; null => <root>/data. ($SYNAPSE_DATA_ROOT also works.)
+  # Explicit raw-recordings dir; null => <root>/raw. ($SYNAPSE_DATA_ROOT also works.)
   data_root: null
   # Canonical recording per participant is resolved through synapse_qc.inventory,
   # so these only need to point at the shared assets and output location.
@@ -56,8 +56,8 @@ paths:
   clinical_data: 02_PCData.xlsx
   # ---- Output locations (all outputs resolve as <base>/<dir>; base comes from
   # paths.root / $SYNAPSE_DATA_BASE / the repo). Change them HERE, never in code.
-  output_dir: outputs/epochs        # processed Epochs pkl variants (build_dataset)
-  qc_dir: outputs/qc                # quality workbook + reports (run_quality/spotcheck)
+  output_dir: processed/dataset/eeg_only   # EEG-only pkl variants (build_dataset)
+  qc_dir: processed/qc            # quality workbook + reports (run_quality/spotcheck)
   # The original published pkl, for pipelines/compare.py. Optional: only used
   # to regression-test the vendored code against the paper's own output.
   published_pkl: null   # null => auto-detected in the analysis repo if present

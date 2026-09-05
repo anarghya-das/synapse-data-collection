@@ -19,6 +19,7 @@ EEG bad-channel handling is delegated to ``../../synapse``'s ``create_mne`` via 
 to be on ``sys.path`` at call time, and so the caller's montage monkeypatch on
 ``utils.create_mne`` is honoured).
 """
+import json
 import os
 import re
 
@@ -331,8 +332,10 @@ def write_epoch_clips(input_file, segments, video_root, subject_id, fps_override
                 "t_stim_lsl": seg["t_stim"],
                 "tmin": seg["tmin"],
                 "tmax": seg["tmax"],
-                "video_clip": os.path.relpath(clip_path, os.path.dirname(video_root)),
-                "video_frames_csv": os.path.relpath(csv_path, os.path.dirname(video_root)),
+                # Relative to video_root, so the trial index does not encode
+                # where the video tree happens to sit.
+                "video_clip": os.path.relpath(clip_path, video_root),
+                "video_frames_csv": os.path.relpath(csv_path, video_root),
                 "n_frames_written": len(rows),
                 "n_frames_expected": seg["n_frames"],
                 "partial_window": seg["partial"],
@@ -395,7 +398,7 @@ def _write_qc_sidecar(qc_result, ch_names, out_dir, subject_id):
     return tsv_path, json_path
 
 
-def epoch_eeg_all(raw, events, marker_dict, task_timings, out_dir, subject_id):
+def epoch_eeg_all(raw, events, marker_dict, task_timings, eeg_dir, subject_id):
     """Epoch on stim markers per task and save EVERY boundary-valid epoch.
 
     Detect-and-defer: no PTP rejection and no channel repair happen here. Bad
@@ -412,7 +415,6 @@ def epoch_eeg_all(raw, events, marker_dict, task_timings, out_dir, subject_id):
     is a rejection decision, and rejection lives in finalize."""
     import mne
 
-    eeg_dir = os.path.join(out_dir, "eeg")
     os.makedirs(eeg_dir, exist_ok=True)
 
     info = {}
@@ -452,7 +454,22 @@ def epoch_eeg_all(raw, events, marker_dict, task_timings, out_dir, subject_id):
             "n_epochs": n_epochs,
             "n_trials": n_trials,
         }
+    # Persist what the video/alignment stages need from this stage. Without it
+    # they could only run in the same process as the EEG stage -- which is the
+    # coupling that made "re-encode video without re-epoching" impossible.
+    with open(os.path.join(eeg_dir, f"sub-{subject_id}_eeg_info.json"), "w") as fh:
+        json.dump(info, fh, indent=2)
     return info
+
+
+def load_eeg_info(eeg_dir, subject_id):
+    """The ``epoch_eeg_all`` result, read back from disk. Lets the video and
+    alignment stages run against an EEG tree built by an earlier run."""
+    path = os.path.join(eeg_dir, f"sub-{subject_id}_eeg_info.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as fh:
+        return json.load(fh)
 
 
 def _match_segments_to_eeg(segments, eeg_info):
@@ -545,7 +562,8 @@ def nearest_frame_for_eeg(frame_t_rel, tmin, tmax, sfreq=125.0):
 # Per-recording orchestration (called once per participant by the pipeline)
 # --------------------------------------------------------------------------- #
 def pair_recording(
-    xdf_path, video_path, subject_id, out_dir, *,
+    xdf_path, video_path, subject_id, out_dir=None, *,
+    eeg_dir=None, video_dir=None, align_dir=None,
     eeg_stream_name="obci_eeg1", channel_strategy="interpolate",
     bandpass=None, flat_voltage=0.5, notch_freq=60.0, quality_preset="default",
     bindings=("pmt", "hlt", "let", "ast"), task_timings=None,
@@ -567,8 +585,24 @@ def pair_recording(
     Returns a uniform summary dict regardless of mode. Raises on a hard failure
     (e.g. missing EEG stream in epoch mode) so the pipeline can isolate the
     subject and keep going.
+
+    **Output roots.** The three products go to three independent directories --
+    ``eeg_dir`` (epochs + QC sidecars), ``video_dir`` (clips + frame timings) and
+    ``align_dir`` (the trial index). Splitting them is what lets a modality be
+    rebuilt on its own: re-epoch without re-encoding ~180 MB of video per subject,
+    or add a pupillometry producer to ``video_dir`` without touching EEG. Passing
+    the legacy single ``out_dir`` puts them back under ``<out_dir>/eeg``,
+    ``<out_dir>/video`` and ``<out_dir>/`` (marker mode still uses ``out_dir``).
     """
     import pyxdf
+
+    if out_dir is not None:
+        eeg_dir = eeg_dir or os.path.join(out_dir, "eeg")
+        video_dir = video_dir or os.path.join(out_dir, "video")
+        align_dir = align_dir or out_dir
+    if not (eeg_dir and video_dir and align_dir):
+        raise ValueError("pair_recording needs out_dir, or all of "
+                         "eeg_dir/video_dir/align_dir")
 
     bandpass = bandpass or {"low": 1, "high": 50}
     task_timings = task_timings or {}
@@ -595,13 +629,17 @@ def pair_recording(
     }
 
     if mode == "marker":
+        # Legacy mode keeps its single-directory layout; it predates the split
+        # and nothing downstream consumes it.
         return _pair_marker_mode(
-            streams, marker_stream, xdf_path, video_path, subject_id, out_dir,
+            streams, marker_stream, xdf_path, video_path, subject_id,
+            out_dir or align_dir,
             bindings, bandpass, flat_voltage, notch_freq, channel_strategy,
             quality_preset, exclude_phases, fps, no_eeg, no_video, summary,
         )
     return _pair_epoch_mode(
-        streams, marker_stream, video_path, subject_id, out_dir,
+        streams, marker_stream, video_path, subject_id,
+        eeg_dir, video_dir, align_dir,
         bindings, bandpass, flat_voltage, notch_freq,
         quality_preset, eeg_stream_name, task_timings, fps,
         no_eeg, no_video, summary,
@@ -609,7 +647,8 @@ def pair_recording(
 
 
 def _pair_epoch_mode(
-    streams, marker_stream, video_path, subject_id, out_dir,
+    streams, marker_stream, video_path, subject_id,
+    eeg_dir, video_dir, align_dir,
     bindings, bandpass, flat_voltage, notch_freq,
     quality_preset, eeg_stream_name, task_timings, fps,
     no_eeg, no_video, summary,
@@ -647,11 +686,23 @@ def _pair_epoch_mode(
         raw.info["bads"] = list(qc.get("bads_combined", []))
         summary["n_bad_detected"] = len(raw.info["bads"])
         summary["quality_score"] = qc.get("quality_score")
-        os.makedirs(out_dir, exist_ok=True)
-        _write_qc_sidecar(qc, list(raw.info["ch_names"]), out_dir, subject_id)
+        os.makedirs(eeg_dir, exist_ok=True)
+        _write_qc_sidecar(qc, list(raw.info["ch_names"]), eeg_dir, subject_id)
         eeg_info = epoch_eeg_all(
-            raw, events, marker_dict, task_timings, out_dir, subject_id
+            raw, events, marker_dict, task_timings, eeg_dir, subject_id
         )
+    else:
+        # EEG stage skipped: reuse an earlier run's result so the video and
+        # alignment stages stay runnable on their own. Fail loudly if it is
+        # absent -- an empty eeg_info would silently disable the trial matching
+        # below and write clips for trials that have no epoch.
+        eeg_info = load_eeg_info(eeg_dir, subject_id)
+        if not eeg_info and not no_video:
+            raise ValueError(
+                f"no sub-{subject_id}_eeg_info.json in {eeg_dir}: cannot pair "
+                "video without knowing which EEG epochs were saved. Re-run the "
+                "EEG stage for this subject once to produce it."
+            )
 
     manifest = []
     if not no_video:
@@ -672,17 +723,16 @@ def _pair_epoch_mode(
             if not segments:
                 print("  [skip] no stim epochs with video frames to write.")
             else:
-                video_root = os.path.join(out_dir, "video")
                 manifest = write_epoch_clips(
-                    video_path, segments, video_root, subject_id, fps_override=fps
+                    video_path, segments, video_dir, subject_id, fps_override=fps
                 )
-                print(f"  [video] wrote {len(manifest)} epoch clips to {video_root}")
+                print(f"  [video] wrote {len(manifest)} epoch clips to {video_dir}")
 
     # The alignment manifest records the video<->EEG trial pairing; only write it
     # when the video side actually ran (else the 1:1 mismatch check is spurious).
     if not no_video and (manifest or eeg_info):
-        os.makedirs(out_dir, exist_ok=True)
-        _write_alignment_manifest(manifest, eeg_info, out_dir, subject_id)
+        os.makedirs(align_dir, exist_ok=True)
+        _write_alignment_manifest(manifest, eeg_info, align_dir, subject_id)
 
     summary["task_counts"] = {t: s["n_epochs"] for t, s in eeg_info.items()}
     summary["excluded_tasks"] = []          # exclusion is a finalize decision

@@ -21,32 +21,37 @@ defaults:
   - _self_
 
 # Keep CWD unchanged (relative paths resolve) and corral Hydra's run log under
-# <base>/outputs/logs/ -- same convention as build_dataset.
+# <base>/processed/logs/ -- same convention as build_dataset.
 hydra:
   run:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
   sweep:
-    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/outputs/logs/${hydra.job.name}
+    dir: ${oc.env:SYNAPSE_DATA_BASE,.}/processed/logs/${hydra.job.name}
     subdir: ${hydra.job.num}
   output_subdir: null
   job:
     chdir: false
 
-# Output goes to outputs/multimodal/paired/ (flat; no variant subfolder -- pairing
+# Output goes to processed/{eeg,video,paired}/ (flat; no variant subfolder -- pairing
 # is the shared stage-1 intermediate). ``name`` is still recorded in the manifest
 # for which preprocessing variant was used.
 name: ${preprocessing.name}
 
 paths:
-  # Base dir holding the raw `data/` and generated `outputs/` trees. null => the
+  # Base dir holding the `raw/` and generated `processed/` trees. null => the
   # repo root. Point it at the relocated copy (server / SSHFS mount) to read/write
   # there:  python -m pipelines.pair_video paths.root=/data1/anarghya/synapse-data
   # Also honored via $SYNAPSE_DATA_BASE. Raw recordings: $SYNAPSE_DATA_ROOT / data_root.
   root: null
-  data_root: null                                            # explicit raw dir; null => <root>/data
+  data_root: null                                            # explicit raw dir; null => <root>/raw
   montage: assets/ceegrid_montage_head.npz                   # injected into create_mne (no CWD dependency)
   # Output location (resolves as <base>/<dir>). Change it HERE, never in code.
-  paired_dir: outputs/multimodal/paired
+  # Three output roots: the EEG, the video and the trial index are separate
+  # products so each can be rebuilt without the others (re-epoch without
+  # re-encoding video; add a pupillometry producer under video_dir).
+  eeg_dir: processed/eeg
+  video_dir: processed/video
+  paired_dir: processed/paired
 
 tasks:
   order: [pmt, let, hlt, ast]

@@ -10,8 +10,11 @@ data-collection experiment (repo root) and the QC/dataset-building pipelines
 `git subtree` with its history preserved). `processing/` has its own README,
 requirements, Hydra `conf/` and `docs/`; run its pipelines FROM INSIDE
 `processing/` (`cd processing && python -m pipelines.build_dataset ...`).
-The raw recordings + generated outputs live on the lab server, pointed at via
-`$SYNAPSE_DATA_BASE` or `paths.root=...` — see `processing/README.md`. The
+The data lives on the lab server, pointed at via `$SYNAPSE_DATA_BASE` — a base
+holding `raw/` (recordings) and `processed/` (everything generated, numbered by
+pipeline step: `qc` -> `paired` -> `dataset`). Layout and the reserved
+`eeg`/`video` slots for pupillometry: `processing/README.md` and
+`processed/README.md` in the data tree. The
 analysis/paper repo is still separate: `../synapse` (a sibling of THIS repo's
 root; configured as an absolute path in `processing/conf/config.yaml`
 `paths.synapse_repo`, so nothing breaks if cwd differs).
@@ -90,12 +93,16 @@ are in `processing/README.md`; do not restate them here.
 - **This repo owns processing**; the analysis repo (`../synapse`) only reads a
   finished pkl. The published preprocessing code is vendored verbatim — full
   rationale and the re-vendoring procedure in `docs/dataset_handoff.md`.
-- **The multimodal pipeline is two stages, detect-and-defer.** `pair_video`
-  records bad channels but does NOT interpolate/drop/zero or reject epochs;
-  `finalize_dataset` applies `channel_strategy` + epoch rejection. This is why
+- **Two stages, detect-and-defer.** `pair_video` writes the stage trees
+  (`processed/{eeg,video,paired}/`) recording bad channels but NOT
+  interpolating/dropping/zeroing or rejecting epochs; `finalize_dataset` applies
+  `channel_strategy` + epoch rejection into `processed/dataset/`. This is why
   rejection PTP can be computed over good channels only, and why you can try
-  masking vs interpolation without re-running the slow pair step. Details:
-  `processing/README.md`.
+  masking vs interpolation without re-running the slow pair step.
+- **The stage trees hold EVERY processed subject — no cohort subfolder.**
+  Choosing a subset is a dataset decision: `+cohort=<name>` on finalize, omitted
+  for all. Layout and the three shipped label files: `processing/README.md` and
+  `processed/README.md` in the data tree.
 - **`docs/variants.md` is GENERATED from `conf/` — never hand-edit it.**
   `python -m synapse_qc.variants --write` regenerates, `--check` exits 1 on
   drift. Run `--check` after touching `conf/cohort/` or `conf/preprocessing/`.
